@@ -35,4 +35,4 @@ ny() {
 source ~/.copilot/functions/list-deployments.sh
 
 # Elastic Cloud API Keys
-export EC_API_KEY="essa_Tm5FM0xVdHdjMEowUmxKQ01GZHBOMFpQUkcwNk0wTjJYMnBaZGpNdGVuUkpXRTVmZVU5NlQwWnlRUT09AAAAAHCQ23o="
+export EC_API_KEY="████████████████████"
