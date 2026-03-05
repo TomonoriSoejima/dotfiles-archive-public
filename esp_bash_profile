@@ -1,0 +1,128 @@
+# .bashrc
+
+# User specific aliases and functions
+
+# Source global definitions
+if [ -f /etc/bashrc ]; then
+	. /etc/bashrc
+fi
+
+# esp completion
+complete -W "$(echo `cat ~/.process`)" nctrl
+complete -W "$(echo `cat ~/share/team/completion/comp_indexeradmin`)" inad
+complete -W "$(echo `cat ~/share/team/completion/comp_indexerinfo`)" in2
+complete -W "$(echo `cat ~/share/team/completion/comp_crawleradmin`)" crad
+alias wget="wget -qO- --no-proxy" 
+alias qr2="nctrl start qrserver; sleep 3; wget  http://$(hostname):15100/control?debug.timings=1"
+
+
+. ~/share/team/team.sh
+
+
+alias dstat-full='dstat -Tclmdrn'
+alias dstat-mem='dstat -Tclm'
+alias dstat-cpu='dstat -Tclr'
+alias dstat-net='dstat -Tclnd'
+alias dstat-disk='dstat -Tcldr'
+
+
+export LS_COLORS='no=00;36:fi=00;36:di=04;31:ln=01'
+export EXINIT="set ic nu"
+export PS1="[\u@\h \W]\\$"
+
+export HISTIGNORE="&:ls:[bf]g:cd:pwd"
+export HISTCONTROL=erasedups
+shopt -s histappend
+export PROMPT_COMMAND='history -a'
+export HISTSIZE="100000"
+#export PAGER="vim" 
+export PAGER="less -X -i" 
+export LESSOPEN='|/usr/bin/lesspipe.sh %s'
+
+export JLESSCHARSET=utf-8
+
+
+# alias grep='grep --color=always'
+alias which='which -a'
+alias pgrep='pgrep -lf'
+alias get='~/share/unixtools/getfixml.sh'
+alias ss='$FASTSEARCH/rdbms/bin/mysql -S $FASTSEARCH/rdbms/mysql.sock -ufast -pfast vespa'
+alias td='cd /mnt/share/ESP-TEST-DATA'
+alias locate='locate -i'
+#cd $HOME/esp/bin && source setupenv.sh > /dev/null && cd $HOME
+
+
+export JAVA_HOME="$HOME/jdk1.6.0_21"
+
+#export LANG="ja_JP.UTF-8"
+export LANG="en_EN.UTF-8"
+alias ssh="ssh -A"
+PATH="$PATH":/usr/local/mysql/bin
+PATH="$PATH:`pwd`/bin:/mnt/share/unixtools:$JAVA_HOME/bin:/mnt/share/unixtools/dstat-0.7.2"
+export PATH
+
+
+# to do , find out whether you can pass parameter to alias$
+alias fl="find . -maxdepth 1 | cat -n"
+alias g=".good.sh"
+alias less="less -R -X -i"
+alias lsof="/usr/sbin/lsof"
+
+
+#. $HOME/.hostcolor.sh
+
+
+# good setting
+
+
+#shopt -s cdspell autocd globstar
+
+
+alias logg='find $FASTSEARCH/var/log/ > ~/.secretlog ; vi ~/.secretlog'
+alias conf='find $FASTSEARCH/etc/ > ~/.conf ; vi ~/.conf'
+alias fix='find $FASTSEARCH/data/data_fixml | grep "gz$" | sort > ~/.fix ; vi ~/.fix'
+
+
+
+export PGPASSWORD=fast
+
+
+alias ll='ls -hltr --color=tty'
+
+
+
+backup() {
+cp $1{,.`date +%Y-%m-%d-$$`}
+}
+
+
+alias tra="cd $FASTSEARCH/components/logtransformer"
+
+alias pgit="git log --pretty=format:'%h : %s' --topo-order --graph"
+
+
+
+
+co() {
+
+collection-admin -m listcollections | grep -v PRO | awk -F" " '{print $NF}' | sed -n '5,$p' | sed -n  '$!p'
+
+}
+
+
+# alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.stdin.readline())"'
+
+# changed, kusen, 20141228
+alias kusen='cd ~/share/kusen/work'
+
+
+
+btmuzip () 
+{ 
+	password="btmufj";
+	echo $@;
+	zip -9 -eP $password $1.zip "$@";
+	echo $1.zip created with $password
+}
+
+alias clean="nctrl stop indexer; rm -rf $FASTSEARCH/data/data_{fixml,index}; rm $FASTSEARCH/var/log/indexer/* ; nctrl start indexer"

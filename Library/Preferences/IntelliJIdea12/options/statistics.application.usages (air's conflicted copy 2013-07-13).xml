@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="StatisticsApplicationUsages">
+    <group name="language-level">
+      <project id="bit.feed" values="JDK_1_6" />
+      <project id="esp4j-core" values="JDK_1_6" />
+      <project id="sfeapi" values="JDK_1_6" />
+      <project id="lab" values="JDK_1_6" />
+      <project id="jdbc" values="JDK_1_6" />
+      <project id="logtransformer" values="JDK_1_6" />
+      <project id="impulse" values="JDK_1_6" />
+    </group>
+    <group name="run-configuration-type">
+      <project id="esp4j-core" values="Remote" />
+      <project id="logtransformer" values="Remote" />
+    </group>
+    <group name="vcs">
+      <project id="bit.feed" values="Git" />
+    </group>
+    <group name="module type">
+      <project id="bit.feed" values="JAVA_MODULE" />
+      <project id="esp4j-core" values="JAVA_MODULE" />
+      <project id="sfeapi" values="JAVA_MODULE" />
+      <project id="lab" values="JAVA_MODULE" />
+      <project id="jdbc" values="JAVA_MODULE" />
+      <project id="logtransformer" values="JAVA_MODULE" />
+      <project id="impulse" values="JAVA_MODULE" />
+    </group>
+    <group name="file-type">
+      <project id="bit.feed" values="IDEA_MODULE,XML,PLAIN_TEXT,UNKNOWN,JAVA" />
+      <project id="esp4j-core" values="SQL files,PLAIN_TEXT,Images,JAVA,DTD,HTML,IDEA_MODULE,UNKNOWN,ARCHIVE,XML,Properties" />
+      <project id="sfeapi" values="XML,UNKNOWN,Properties,IDEA_MODULE,JAVA,HTML" />
+      <project id="lab" values="Properties,XML,JAVA,ARCHIVE,IDEA_MODULE,UNKNOWN,UML,CLASS,PLAIN_TEXT" />
+      <project id="jdbc" values="JAVA,HTML,Native,PLAIN_TEXT,XML,IDEA_MODULE,ARCHIVE,UNKNOWN,Properties" />
+      <project id="logtransformer" values="JAVA,Images,Properties,PLAIN_TEXT,IDEA_MODULE,HTML,UNKNOWN,XML,DTD,SQL files" />
+      <project id="impulse" values="PLAIN_TEXT,ARCHIVE,HTML,Native,SQL files,Images,DTD,CLASS,XML,JAVA,UNKNOWN,IDEA_MODULE,Properties" />
+    </group>
+    <group name="run-configuration-type-temp">
+      <project id="lab" values="MavenRunConfiguration,Application" />
+    </group>
+    <group name="JavaScript versions">
+      <project id="jdbc" values="DEFAULT" />
+      <project id="impulse" values="DEFAULT" />
+    </group>
+    <group name="javaScript Scope Usages">
+      <project id="jdbc" values="Project,Project" />
+      <project id="impulse" values="Project,Project" />
+    </group>
+  </component>
+  <component name="UsageTrigger">
+    <counts>
+      <entry feature="execute.Application.Run" count="3" />
+      <entry feature="execute.Remote.Debug" count="78" />
+      <entry feature="uml.ShowDiagram.JAVA" count="2" />
+    </counts>
+  </component>
+</application>
+

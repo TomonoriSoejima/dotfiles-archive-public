@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DimensionService">
+    <location key="ProcessPopupWindow.0.0.2560.1440" x="1218" y="987" />
+    <location key="#com.intellij.unscramble.UnscrambleDialog.0.0.2560.1440" x="732" y="382" />
+    <location key="#com.intellij.debugger.ui.breakpoints.BreakpointsConfigurationDialogFactory.BreakpointsConfigurationDialog.AddFieldBreakpointDialog.0.0.2560.1440" x="1307" y="361" />
+    <location key="#com.intellij.ide.util.ExportDialog.0.0.2560.1440" x="661" y="570" />
+    <location key="#Project_Structure.0.0.2560.1440" x="534" y="254" />
+    <location key="OptionsEditor.0.0.2560.1440" x="678" y="207" />
+    <location key="#com.intellij.execution.impl.EditConfigurationsDialog.0.0.2560.1440" x="462" y="219" />
+    <location key="WELCOME_SCREEN.0.0.1440.900" x="720" y="300" />
+    <location key="git4idea.merge.GitPullDialog.0.0.1440.900" x="446" y="248" />
+    <location key="git4idea.push.GitPushDialog.0.0.1440.900" x="362" y="174" />
+    <location key="#Customize_Threads_View.0.0.2560.1440" x="897" y="567" />
+    <location key="NewModule_or_Project.wizard.0.0.1440.900" x="356" y="30" />
+    <location key="com.intellij.tools.ToolSelectDialog.dimensionServiceKey.0.0.1440.900" x="610" y="217" />
+    <location key="WELCOME_SCREEN.0.0.0.0" x="720" y="300" />
+    <location key="#com.intellij.ide.util.projectWizard.JdkChooserPanel.MyDialog.0.0.2560.1440" x="913" y="543" />
+    <location key="com.intellij.xdebugger.impl.breakpoints.ui.tree.BreakpointMasterDetailPopupBuilder.0.0.2560.1440" x="418" y="467" />
+    <location key="FileChooserDialogImpl.0.0.2560.1440" x="1593" y="166" />
+    <location key="OptionsEditor.0.0.1440.900" x="108" y="22" />
+    <location key="NewModule_or_Project.wizard.0.0.2560.1440" x="947" y="363" />
+    <location key="FileChooserDialogImpl.0.0.1440.900" x="227" y="138" />
+    <location key="WELCOME_SCREEN.0.0.2560.1440" x="1280" y="300" />
+    <location key="#com.intellij.debugger.ui.EvaluationDialog2.0.0.2560.1440" x="1023" y="614" />
+    <location key="#Browse_Repositories.0.0.1440.900" x="308" y="94" />
+    <location key="findTextDialog.0.0.2560.1440" x="1001" y="474" />
+    <location key="#Project_Structure.0.0.1440.900" x="196" y="28" />
+    <location key="DiffWindow.0.0.1440.900" x="101" y="88" />
+    <location key="#com.intellij.ide.util.MemberChooser.0.0.2560.1440" x="671" y="418" />
+    <location key="CommitChangelistDialog.0.0.1440.900" x="370" y="143" />
+    <location key="WELCOME_SCREEN.0.0.1680.1050" x="899" y="300" />
+    <location key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate.0.0.1440.900" x="470" y="348" />
+    <location key="#com.intellij.ide.util.TreeClassChooserDialog.0.0.2560.1440" x="1158" y="631" />
+    <location key="#com.intellij.fileTypes.FileTypeChooser.0.0.2560.1440" x="819" y="505" />
+    <location key="#com.intellij.codeInsight.editorActions.RestoreReferencesDialog.0.0.2560.1440" x="1012" y="394" />
+    <location key="com.intellij.javaee.module.view.dataSource.DataSourcePropertiesDialog.0.0.2560.1440" x="887" y="328" />
+    <location key="#Browse_JetBrains_Plugins_.0.0.1440.900" x="308" y="94" />
+    <size key="GridCell.Tab.1.left.0.0.1440.900" width="1394" height="262" />
+    <size key="ProcessPopupWindow.0.0.2560.1440" width="768" height="450" />
+    <size key="GridCell.Tab.0.bottom.0.0.2560.1440" width="2006" height="524" />
+    <size key="Vcs.CompareWithSelectedRevision.Popup.0.0.1440.900" width="300" height="300" />
+    <size key="#com.intellij.debugger.ui.breakpoints.BreakpointsConfigurationDialogFactory.BreakpointsConfigurationDialog.AddFieldBreakpointDialog.0.0.2560.1440" width="531" height="209" />
+    <size key="GridCell.Tab.1.bottom.0.0.1440.900" width="1394" height="262" />
+    <size key="GridCell.Tab.2.right.0.0.2560.1440" width="2164" height="514" />
+    <size key="#Project_Structure.0.0.2560.1440" width="1746" height="843" />
+    <size key="OptionsEditor.0.0.2560.1440" width="1142" height="843" />
+    <size key="GridCell.Tab.0.right.0.0.1440.900" width="1427" height="275" />
+    <size key="GridCell.Tab.2.bottom.0.0.2560.1440" width="2164" height="514" />
+    <size key="GridCell.Tab.1.right.0.0.1440.900" width="1394" height="262" />
+    <size key="GridCell.Tab.1.center.0.0.1440.900" width="1394" height="262" />
+    <size key="GridCell.Tab.0.right.0.0.2560.1440" width="2006" height="524" />
+    <size key="OptionsEditor.0.0.1440.900" width="1224" height="819" />
+    <size key="com.intellij.xdebugger.impl.breakpoints.ui.tree.BreakpointMasterDetailPopupBuilder.0.0.2560.1440" width="1417" height="824" />
+    <size key="FileChooserDialogImpl.0.0.2560.1440" width="687" height="787" />
+    <size key="GridCell.Tab.1.bottom.0.0.2560.1440" width="2006" height="524" />
+    <size key="GridCell.Tab.1.left.0.0.2560.1440" width="2006" height="524" />
+    <size key="GridCell.Tab.0.center.0.0.1440.900" width="1427" height="275" />
+    <size key="GridCell.Tab.1.center.0.0.2560.1440" width="2006" height="524" />
+    <size key="DiffWindow.0.0.1440.900" width="1240" height="700" />
+    <size key="GridCell.Tab.0.bottom.0.0.1440.900" width="1427" height="275" />
+    <size key="CommitChangelistDialog.0.0.1440.900" width="699" height="627" />
+    <size key="GridCell.Tab.1.right.0.0.2560.1440" width="2006" height="524" />
+    <size key="GridCell.Tab.0.left.0.0.2560.1440" width="2006" height="524" />
+    <size key="GridCell.Tab.0.center.0.0.2560.1440" width="2006" height="524" />
+    <size key="GridCell.Tab.2.center.0.0.2560.1440" width="2164" height="514" />
+    <size key="GridCell.Tab.0.left.0.0.1440.900" width="1427" height="275" />
+    <size key="GridCell.Tab.2.left.0.0.2560.1440" width="2164" height="514" />
+    <extendedState key="DiffWindow" state="0" />
+  </component>
+  <component name="LafManager">
+    <laf class-name="com.apple.laf.AquaLookAndFeel" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="DefaultHtmlDoctype.MigrateToHtml5" value="true" />
+    <property name="jdk.selected.JAVA_MODULE" value="1.7 (3)" />
+    <property name="MemberChooser.sorted" value="true" />
+    <property name="create.project.preferred.importer" value="Existing Sources" />
+    <property name="SingleInspectionProfilePanel.HORIZONTAL_DIVIDER_PROPORTION" value="0.5" />
+    <property name="file.colors.enable.non.project" value="Yellow" />
+    <property name="project.jdk.splitter" value="0.2" />
+    <property name="RunConfigurable.dividerProportion" value="0.3" />
+    <property name="SingleInspectionProfilePanel.VERTICAL_DIVIDER_PROPORTION" value="0.5" />
+    <property name="GoToClass.toSaveIncludeLibraries" value="false" />
+    <property name="CommitChangeListDialog.DETAILS_SHOW_OPTION_" value="false" />
+    <property name="ChangesViewManager.DETAILS_SPLITTER_PROPORTION" value="0.5" />
+    <property name="default.storage.format" value=".idea (directory based)" />
+    <property name="MemberChooser.showClasses" value="true" />
+    <property name="ExpandBeforeRunStepsPanel" value="true" />
+    <property name="GoToClass.includeLibraries" value="false" />
+    <property name="CommitChangeListDialog.SPLITTER_PROPORTION_" value="0.8" />
+    <property name="GoToFile.includeJavaFiles" value="false" />
+    <property name="Non-Project Files" value="Yellow" />
+    <property name="installation.uid" value="e270d189-9f52-412e-aa38-0b3695be949b" />
+    <property name="file.colors.enable.tests" value="Green" />
+    <property name="MemberChooser.copyJavadoc" value="false" />
+    <property name="com.intellij.openapi.roots.ui.configuration.TabbedModuleEditor.selectedEditor" value="Sources" />
+    <property name="DeploymentNotificationsComponent.WarnDisplayed.Java7&amp;Windows7FTPIssue" value="false" />
+    <property name="com.intellij.xdebugger.impl.breakpoints.ui.tree.BreakpointMasterDetailPopupBuilder.splitter" value="0.4527132" />
+    <property name="Tests" value="Green" />
+    <property name="file.chooser.recent.files" value="$USER_HOME$/Documents/report.sample&#10;/Users/surfer/.ssh/id_dsa.pub&#10;/Users/surfer/Dropbox/FAST/adminapi-java-5.3.0.23/lib&#10;/Users/surfer/Dropbox/unix/lab/admin.api.sample&#10;/Users/surfer/esp5-public/common/installer&#10;/Users/surfer/esp5/common/installer/libinstaller&#10;/Users/surfer/esp5/common/installer/src&#10;/Users/surfer/Dropbox/unix/lab/lib/mysql-connector-java-5.1.22-bin.jar&#10;/Users/surfer/tmp/batch&#10;/Users/surfer/esp-public/common/jdbcConnector/src&#10;/Users/surfer/Dropbox/unix/lab/lib&#10;/Users/surfer/customers/BTMU/HyperSearch/phase1/connector/BTMUKmtConnector&#10;/Users/surfer/esp-public/common/cctkjava/src&#10;/Users/surfer/esp-public/common/contentapi/src/java&#10;/Users/surfer/connectors/common/contentapi/src/java&#10;/Users/surfer/connectors/common/jdbcConnector/src&#10;/Users/surfer/connectors/common/cctkjava/src&#10;/Users/surfer/connectors/common&#10;/Users/surfer/esp5-public/common/logtransformer/src&#10;/Users/surfer/esp5-public/common/esp4j-core/src/java&#10;/Users/surfer/Documents/feed&#10;/Users/surfer/esp5-public/common/logtransformer/src/main&#10;/Users/surfer/esp5-public/common/sfeapi/src/java&#10;/Volumes/Macintosh HD/sources/products/impulse/modules" />
+    <property name="UNSCRAMBLE_LOG_FILE_LAST_URL" value="" />
+    <property name="evlsprt3.12" value="19" />
+  </component>
+</application>
+

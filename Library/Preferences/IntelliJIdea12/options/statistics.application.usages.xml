@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="StatisticsApplicationUsages">
+    <group name="run-configuration-type">
+      <project id="esp.jdbc" values="Remote" />
+      <project id="esp4j-core" values="Remote" />
+      <project id="logtransformer" values="Remote" />
+      <project id="jdbc" values="Remote" />
+    </group>
+    <group name="language-level">
+      <project id="fastinstall" values="JDK_1_6" />
+      <project id="esp.jdbc" values="JDK_1_6" />
+      <project id="adminapi" values="JDK_1_6" />
+      <project id="report.sample" values="JDK_1_6" />
+      <project id="adminpai" values="JDK_1_6" />
+      <project id="fast.feed" values="JDK_1_6" />
+      <project id="kmtconnector" values="JDK_1_6" />
+      <project id="lab" values="JDK_1_6" />
+      <project id="fastinstaller" values="JDK_1_6" />
+      <project id="logtransformer" values="JDK_1_6" />
+      <project id="impulse" values="JDK_1_6" />
+      <project id="bit.feed" values="JDK_1_6" />
+      <project id="esp4j-core" values="JDK_1_6" />
+      <project id="sfeapi" values="JDK_1_6" />
+      <project id="feed" values="JDK_1_6" />
+      <project id="panasonic" values="JDK_1_6" />
+      <project id="jdbc" values="JDK_1_6" />
+      <project id="sample" values="JDK_1_6" />
+    </group>
+    <group name="vcs">
+      <project id="adminapi" values="Git" />
+      <project id="bit.feed" values="Git" />
+      <project id="adminpai" values="Git" />
+      <project id="fast.feed" values="Git" />
+      <project id="kmtconnector" values="CVS" />
+      <project id="feed" values="Git" />
+      <project id="sample" values="Git" />
+    </group>
+    <group name="module type">
+      <project id="fastinstall" values="JAVA_MODULE" />
+      <project id="esp.jdbc" values="JAVA_MODULE" />
+      <project id="adminapi" values="JAVA_MODULE" />
+      <project id="report.sample" values="JAVA_MODULE" />
+      <project id="adminpai" values="JAVA_MODULE" />
+      <project id="fast.feed" values="JAVA_MODULE" />
+      <project id="kmtconnector" values="JAVA_MODULE" />
+      <project id="lab" values="JAVA_MODULE" />
+      <project id="fastinstaller" values="JAVA_MODULE" />
+      <project id="logtransformer" values="JAVA_MODULE" />
+      <project id="impulse" values="JAVA_MODULE" />
+      <project id="bit.feed" values="JAVA_MODULE" />
+      <project id="esp4j-core" values="JAVA_MODULE" />
+      <project id="sfeapi" values="JAVA_MODULE" />
+      <project id="feed" values="JAVA_MODULE" />
+      <project id="panasonic" values="JAVA_MODULE" />
+      <project id="jdbc" values="JAVA_MODULE" />
+      <project id="sample" values="JAVA_MODULE" />
+    </group>
+    <group name="jdbc-datasource">
+      <project id="esp.jdbc" values="/,null/null" />
+      <project id="jdbc" values="null/null" />
+    </group>
+    <group name="run-configuration-type-temp">
+      <project id="fast.feed" values="Application" />
+      <project id="feed" values="Application" />
+      <project id="lab" values="Application" />
+      <project id="sample" values="Application" />
+    </group>
+    <group name="file-type">
+      <project id="fastinstall" values="XML,IDEA_MODULE,ARCHIVE,Images,DTD,PLAIN_TEXT,JAVA,Properties,UNKNOWN" />
+      <project id="esp.jdbc" values="XML,JAVA,HTML,IDEA_MODULE,DATASOURCE_STORAGE,Native,Properties,PLAIN_TEXT,ARCHIVE,UNKNOWN" />
+      <project id="adminapi" values="PLAIN_TEXT,UNKNOWN,IDEA_MODULE,JAVA,CLASS" />
+      <project id="report.sample" values="XML,IDEA_MODULE,UNKNOWN,JAVA,PLAIN_TEXT,CLASS" />
+      <project id="adminpai" values="PLAIN_TEXT,IDEA_MODULE,CLASS,JAVA,UNKNOWN" />
+      <project id="fast.feed" values="JAVA,IDEA_MODULE,PLAIN_TEXT,UNKNOWN,XML" />
+      <project id="kmtconnector" values="UNKNOWN,JAVA,IDEA_MODULE" />
+      <project id="lab" values="XML,JAVA,PLAIN_TEXT,UML,CLASS,ARCHIVE,Properties,IDEA_MODULE,UNKNOWN" />
+      <project id="fastinstaller" values="XML,IDEA_MODULE,JAVA,UNKNOWN,Properties,DTD" />
+      <project id="logtransformer" values="XML,PLAIN_TEXT,IDEA_MODULE,JAVA,SQL files,UNKNOWN,DTD,Properties,Images,HTML" />
+      <project id="impulse" values="DTD,UNKNOWN,JAVA,ARCHIVE,Properties,CLASS,XML,SQL files,Images,HTML,PLAIN_TEXT,IDEA_MODULE,Native" />
+      <project id="bit.feed" values="IDEA_MODULE,XML,UNKNOWN,PLAIN_TEXT,JAVA" />
+      <project id="esp4j-core" values="HTML,UNKNOWN,Images,IDEA_MODULE,SQL files,JAVA,PLAIN_TEXT,XML,Properties,ARCHIVE,DTD" />
+      <project id="sfeapi" values="HTML,Properties,XML,IDEA_MODULE,JAVA,UNKNOWN" />
+      <project id="feed" values="IDEA_MODULE,PLAIN_TEXT,JAVA,XML,UNKNOWN" />
+      <project id="panasonic" values="JAVA,UNKNOWN,IDEA_MODULE,CLASS,XML" />
+      <project id="jdbc" values="XML,DATASOURCE_STORAGE,HTML,UNKNOWN,ARCHIVE,PLAIN_TEXT,JAVA,IDEA_MODULE,Properties,Native" />
+      <project id="sample" values="JAVA,IDEA_MODULE,XML,UNKNOWN" />
+    </group>
+    <group name="javaScript Scope Usages">
+      <project id="jdbc" values="Project,Project" />
+      <project id="impulse" values="Project,Project" />
+    </group>
+    <group name="JavaScript versions">
+      <project id="jdbc" values="DEFAULT" />
+      <project id="impulse" values="DEFAULT" />
+    </group>
+    <group name="jdbc-driver">
+      <project id="esp.jdbc" values="com.mysql.jdbc.Driver,com.mysql.jdbc.Driver" />
+      <project id="jdbc" values="com.mysql.jdbc.Driver" />
+    </group>
+  </component>
+  <component name="UsageTrigger">
+    <counts>
+      <entry feature="execute.Application.Debug" count="33" />
+      <entry feature="execute.Application.Run" count="77" />
+      <entry feature="execute.Remote.Debug" count="106" />
+      <entry feature="uml.ShowDiagram.JAVA" count="5" />
+      <entry feature="uml.ShowDiagram.MODULES" count="3" />
+      <entry feature="uml.ShowDiagram.MODULES.popup" count="1" />
+    </counts>
+  </component>
+</application>
+

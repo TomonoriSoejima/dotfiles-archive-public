@@ -1,0 +1,6 @@
+alias kona_local="sshfs kona:/home/surfer /Volumes/kona -o allow_other"
+alias es="cd ~/Dropbox/work/elastic/notes"
+
+#cvs stuff
+export CVSROOT=:ext:soetom@cvs:/cvs
+export CVS_RSH=ssh

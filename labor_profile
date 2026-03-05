@@ -1,0 +1,22 @@
+# time track stuff
+#alias k="(time  k ) 2>&1 | grep real "
+alias track='echo -n -e "\033]0;time-track\007"'
+#alias did="cat ~/KPI/`date +%Y-%m-%d`"
+#alias did="cat ~/KPI/`date +%Y-%m-%d` | awk '{print $1, $2 ,$3, $4,$5,  int($NF/60), "min" }'"
+alias l="list.sh"
+alias 0="perl -i -pe 'tr/^1/0/ if eof' ~/KPI/`date +%Y-%m-%d`"
+alias vid="vi ~/KPI/`date +%Y-%m-%d`"
+alias mada="did | grep "^0""
+
+function did ( ) {
+	
+	if [ -z $1];
+	then
+		cat ~/KPI/`date +%Y-%m-%d` | awk '{print $1, $2 ,$3, $4,$5,$6   "min" }'
+		#cat ~/KPI/`date +%Y-%m-%d` | awk '{print $1, $2 ,$3, $4,$5,  int($NF), "min" }'
+		#cat ~/KPI/`date +%Y-%m-%d` | awk '{print $1, $2 ,$3, $4,$5,  int($NF/60), "min" }'
+	else
+		cat ~/KPI/$1 | awk '{print $1, $2 ,$3, $4,$5,  int($NF), "min" }'
+		#cat ~/KPI/$1 | awk '{print $1, $2 ,$3, $4,$5,  int($NF/60), "min" }'
+	fi
+}

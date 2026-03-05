@@ -1,0 +1,14 @@
+enabledebug
+cleancollection
+disabledebug
+defragfixml
+forcecleanup
+purgedata
+resetindex
+resumeindexing
+suspend
+suspendindexing
+tracemode
+inputtracemode
+enable
+disable

@@ -1,0 +1,6890 @@
+# bash completion for ecctl                                -*- shell-script -*-
+
+__ecctl_debug()
+{
+    if [[ -n ${BASH_COMP_DEBUG_FILE} ]]; then
+        echo "$*" >> "${BASH_COMP_DEBUG_FILE}"
+    fi
+}
+
+# Homebrew on Macs have version 1.3 of bash-completion which doesn't include
+# _init_completion. This is a very minimal version of that function.
+__ecctl_init_completion()
+{
+    COMPREPLY=()
+    _get_comp_words_by_ref "$@" cur prev words cword
+}
+
+__ecctl_index_of_word()
+{
+    local w word=$1
+    shift
+    index=0
+    for w in "$@"; do
+        [[ $w = "$word" ]] && return
+        index=$((index+1))
+    done
+    index=-1
+}
+
+__ecctl_contains_word()
+{
+    local w word=$1; shift
+    for w in "$@"; do
+        [[ $w = "$word" ]] && return
+    done
+    return 1
+}
+
+__ecctl_handle_go_custom_completion()
+{
+    __ecctl_debug "${FUNCNAME[0]}: cur is ${cur}, words[*] is ${words[*]}, #words[@] is ${#words[@]}"
+
+    local out requestComp lastParam lastChar comp directive args
+
+    # Prepare the command to request completions for the program.
+    # Calling ${words[0]} instead of directly ecctl allows to handle aliases
+    args=("${words[@]:1}")
+    requestComp="${words[0]} __completeNoDesc ${args[*]}"
+
+    lastParam=${words[$((${#words[@]}-1))]}
+    lastChar=${lastParam:$((${#lastParam}-1)):1}
+    __ecctl_debug "${FUNCNAME[0]}: lastParam ${lastParam}, lastChar ${lastChar}"
+
+    if [ -z "${cur}" ] && [ "${lastChar}" != "=" ]; then
+        # If the last parameter is complete (there is a space following it)
+        # We add an extra empty parameter so we can indicate this to the go method.
+        __ecctl_debug "${FUNCNAME[0]}: Adding extra empty parameter"
+        requestComp="${requestComp} \"\""
+    fi
+
+    __ecctl_debug "${FUNCNAME[0]}: calling ${requestComp}"
+    # Use eval to handle any environment variables and such
+    out=$(eval "${requestComp}" 2>/dev/null)
+
+    # Extract the directive integer at the very end of the output following a colon (:)
+    directive=${out##*:}
+    # Remove the directive
+    out=${out%:*}
+    if [ "${directive}" = "${out}" ]; then
+        # There is not directive specified
+        directive=0
+    fi
+    __ecctl_debug "${FUNCNAME[0]}: the completion directive is: ${directive}"
+    __ecctl_debug "${FUNCNAME[0]}: the completions are: ${out[*]}"
+
+    if [ $((directive & 1)) -ne 0 ]; then
+        # Error code.  No completion.
+        __ecctl_debug "${FUNCNAME[0]}: received error from custom completion go code"
+        return
+    else
+        if [ $((directive & 2)) -ne 0 ]; then
+            if [[ $(type -t compopt) = "builtin" ]]; then
+                __ecctl_debug "${FUNCNAME[0]}: activating no space"
+                compopt -o nospace
+            fi
+        fi
+        if [ $((directive & 4)) -ne 0 ]; then
+            if [[ $(type -t compopt) = "builtin" ]]; then
+                __ecctl_debug "${FUNCNAME[0]}: activating no file completion"
+                compopt +o default
+            fi
+        fi
+
+        while IFS='' read -r comp; do
+            COMPREPLY+=("$comp")
+        done < <(compgen -W "${out[*]}" -- "$cur")
+    fi
+}
+
+__ecctl_handle_reply()
+{
+    __ecctl_debug "${FUNCNAME[0]}"
+    local comp
+    case $cur in
+        -*)
+            if [[ $(type -t compopt) = "builtin" ]]; then
+                compopt -o nospace
+            fi
+            local allflags
+            if [ ${#must_have_one_flag[@]} -ne 0 ]; then
+                allflags=("${must_have_one_flag[@]}")
+            else
+                allflags=("${flags[*]} ${two_word_flags[*]}")
+            fi
+            while IFS='' read -r comp; do
+                COMPREPLY+=("$comp")
+            done < <(compgen -W "${allflags[*]}" -- "$cur")
+            if [[ $(type -t compopt) = "builtin" ]]; then
+                [[ "${COMPREPLY[0]}" == *= ]] || compopt +o nospace
+            fi
+
+            # complete after --flag=abc
+            if [[ $cur == *=* ]]; then
+                if [[ $(type -t compopt) = "builtin" ]]; then
+                    compopt +o nospace
+                fi
+
+                local index flag
+                flag="${cur%=*}"
+                __ecctl_index_of_word "${flag}" "${flags_with_completion[@]}"
+                COMPREPLY=()
+                if [[ ${index} -ge 0 ]]; then
+                    PREFIX=""
+                    cur="${cur#*=}"
+                    ${flags_completion[${index}]}
+                    if [ -n "${ZSH_VERSION}" ]; then
+                        # zsh completion needs --flag= prefix
+                        eval "COMPREPLY=( \"\${COMPREPLY[@]/#/${flag}=}\" )"
+                    fi
+                fi
+            fi
+            return 0;
+            ;;
+    esac
+
+    # check if we are handling a flag with special work handling
+    local index
+    __ecctl_index_of_word "${prev}" "${flags_with_completion[@]}"
+    if [[ ${index} -ge 0 ]]; then
+        ${flags_completion[${index}]}
+        return
+    fi
+
+    # we are parsing a flag and don't have a special handler, no completion
+    if [[ ${cur} != "${words[cword]}" ]]; then
+        return
+    fi
+
+    local completions
+    completions=("${commands[@]}")
+    if [[ ${#must_have_one_noun[@]} -ne 0 ]]; then
+        completions=("${must_have_one_noun[@]}")
+    elif [[ -n "${has_completion_function}" ]]; then
+        # if a go completion function is provided, defer to that function
+        completions=()
+        __ecctl_handle_go_custom_completion
+    fi
+    if [[ ${#must_have_one_flag[@]} -ne 0 ]]; then
+        completions+=("${must_have_one_flag[@]}")
+    fi
+    while IFS='' read -r comp; do
+        COMPREPLY+=("$comp")
+    done < <(compgen -W "${completions[*]}" -- "$cur")
+
+    if [[ ${#COMPREPLY[@]} -eq 0 && ${#noun_aliases[@]} -gt 0 && ${#must_have_one_noun[@]} -ne 0 ]]; then
+        while IFS='' read -r comp; do
+            COMPREPLY+=("$comp")
+        done < <(compgen -W "${noun_aliases[*]}" -- "$cur")
+    fi
+
+    if [[ ${#COMPREPLY[@]} -eq 0 ]]; then
+		if declare -F __ecctl_custom_func >/dev/null; then
+			# try command name qualified custom func
+			__ecctl_custom_func
+		else
+			# otherwise fall back to unqualified for compatibility
+			declare -F __custom_func >/dev/null && __custom_func
+		fi
+    fi
+
+    # available in bash-completion >= 2, not always present on macOS
+    if declare -F __ltrim_colon_completions >/dev/null; then
+        __ltrim_colon_completions "$cur"
+    fi
+
+    # If there is only 1 completion and it is a flag with an = it will be completed
+    # but we don't want a space after the =
+    if [[ "${#COMPREPLY[@]}" -eq "1" ]] && [[ $(type -t compopt) = "builtin" ]] && [[ "${COMPREPLY[0]}" == --*= ]]; then
+       compopt -o nospace
+    fi
+}
+
+# The arguments should be in the form "ext1|ext2|extn"
+__ecctl_handle_filename_extension_flag()
+{
+    local ext="$1"
+    _filedir "@(${ext})"
+}
+
+__ecctl_handle_subdirs_in_dir_flag()
+{
+    local dir="$1"
+    pushd "${dir}" >/dev/null 2>&1 && _filedir -d && popd >/dev/null 2>&1 || return
+}
+
+__ecctl_handle_flag()
+{
+    __ecctl_debug "${FUNCNAME[0]}: c is $c words[c] is ${words[c]}"
+
+    # if a command required a flag, and we found it, unset must_have_one_flag()
+    local flagname=${words[c]}
+    local flagvalue
+    # if the word contained an =
+    if [[ ${words[c]} == *"="* ]]; then
+        flagvalue=${flagname#*=} # take in as flagvalue after the =
+        flagname=${flagname%=*} # strip everything after the =
+        flagname="${flagname}=" # but put the = back
+    fi
+    __ecctl_debug "${FUNCNAME[0]}: looking for ${flagname}"
+    if __ecctl_contains_word "${flagname}" "${must_have_one_flag[@]}"; then
+        must_have_one_flag=()
+    fi
+
+    # if you set a flag which only applies to this command, don't show subcommands
+    if __ecctl_contains_word "${flagname}" "${local_nonpersistent_flags[@]}"; then
+      commands=()
+    fi
+
+    # keep flag value with flagname as flaghash
+    # flaghash variable is an associative array which is only supported in bash > 3.
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+        if [ -n "${flagvalue}" ] ; then
+            flaghash[${flagname}]=${flagvalue}
+        elif [ -n "${words[ $((c+1)) ]}" ] ; then
+            flaghash[${flagname}]=${words[ $((c+1)) ]}
+        else
+            flaghash[${flagname}]="true" # pad "true" for bool flag
+        fi
+    fi
+
+    # skip the argument to a two word flag
+    if [[ ${words[c]} != *"="* ]] && __ecctl_contains_word "${words[c]}" "${two_word_flags[@]}"; then
+			  __ecctl_debug "${FUNCNAME[0]}: found a flag ${words[c]}, skip the next argument"
+        c=$((c+1))
+        # if we are looking for a flags value, don't show commands
+        if [[ $c -eq $cword ]]; then
+            commands=()
+        fi
+    fi
+
+    c=$((c+1))
+
+}
+
+__ecctl_handle_noun()
+{
+    __ecctl_debug "${FUNCNAME[0]}: c is $c words[c] is ${words[c]}"
+
+    if __ecctl_contains_word "${words[c]}" "${must_have_one_noun[@]}"; then
+        must_have_one_noun=()
+    elif __ecctl_contains_word "${words[c]}" "${noun_aliases[@]}"; then
+        must_have_one_noun=()
+    fi
+
+    nouns+=("${words[c]}")
+    c=$((c+1))
+}
+
+__ecctl_handle_command()
+{
+    __ecctl_debug "${FUNCNAME[0]}: c is $c words[c] is ${words[c]}"
+
+    local next_command
+    if [[ -n ${last_command} ]]; then
+        next_command="_${last_command}_${words[c]//:/__}"
+    else
+        if [[ $c -eq 0 ]]; then
+            next_command="_ecctl_root_command"
+        else
+            next_command="_${words[c]//:/__}"
+        fi
+    fi
+    c=$((c+1))
+    __ecctl_debug "${FUNCNAME[0]}: looking for ${next_command}"
+    declare -F "$next_command" >/dev/null && $next_command
+}
+
+__ecctl_handle_word()
+{
+    if [[ $c -ge $cword ]]; then
+        __ecctl_handle_reply
+        return
+    fi
+    __ecctl_debug "${FUNCNAME[0]}: c is $c words[c] is ${words[c]}"
+    if [[ "${words[c]}" == -* ]]; then
+        __ecctl_handle_flag
+    elif __ecctl_contains_word "${words[c]}" "${commands[@]}"; then
+        __ecctl_handle_command
+    elif [[ $c -eq 0 ]]; then
+        __ecctl_handle_command
+    elif __ecctl_contains_word "${words[c]}" "${command_aliases[@]}"; then
+        # aliashash variable is an associative array which is only supported in bash > 3.
+        if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+            words[c]=${aliashash[${words[c]}]}
+            __ecctl_handle_command
+        else
+            __ecctl_handle_noun
+        fi
+    else
+        __ecctl_handle_noun
+    fi
+    __ecctl_handle_word
+}
+
+__ecctl_valid_regions()
+{
+   COMPREPLY=($(echo ${EC_REGIONS}))
+}
+__ecctl_valid_stateless_kinds()
+{
+   COMPREPLY=( apm appsearch kibana )
+}
+
+__ecctl_valid_all_kinds()
+{
+   COMPREPLY=( apm appsearch kibana elasticsearch )
+}
+
+_ecctl_auth_key_create()
+{
+    last_command="ecctl_auth_key_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--description=")
+    two_word_flags+=("--description")
+    local_nonpersistent_flags+=("--description=")
+    flags+=("--insecure-password=")
+    two_word_flags+=("--insecure-password")
+    local_nonpersistent_flags+=("--insecure-password=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--description=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_auth_key_delete()
+{
+    last_command="ecctl_auth_key_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_auth_key_list()
+{
+    last_command="ecctl_auth_key_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_auth_key_show()
+{
+    last_command="ecctl_auth_key_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_auth_key()
+{
+    last_command="ecctl_auth_key"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_auth()
+{
+    last_command="ecctl_auth"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("key")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("key")
+    noun_aliases=()
+}
+
+_ecctl_deployment_create()
+{
+    last_command="ecctl_deployment_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--apm")
+    local_nonpersistent_flags+=("--apm")
+    flags+=("--apm-ref-id=")
+    two_word_flags+=("--apm-ref-id")
+    local_nonpersistent_flags+=("--apm-ref-id=")
+    flags+=("--apm-size=")
+    two_word_flags+=("--apm-size")
+    local_nonpersistent_flags+=("--apm-size=")
+    flags+=("--apm-zones=")
+    two_word_flags+=("--apm-zones")
+    local_nonpersistent_flags+=("--apm-zones=")
+    flags+=("--appsearch")
+    local_nonpersistent_flags+=("--appsearch")
+    flags+=("--appsearch-ref-id=")
+    two_word_flags+=("--appsearch-ref-id")
+    local_nonpersistent_flags+=("--appsearch-ref-id=")
+    flags+=("--appsearch-size=")
+    two_word_flags+=("--appsearch-size")
+    local_nonpersistent_flags+=("--appsearch-size=")
+    flags+=("--appsearch-zones=")
+    two_word_flags+=("--appsearch-zones")
+    local_nonpersistent_flags+=("--appsearch-zones=")
+    flags+=("--deployment-template=")
+    two_word_flags+=("--deployment-template")
+    local_nonpersistent_flags+=("--deployment-template=")
+    flags+=("--enterprise_search")
+    local_nonpersistent_flags+=("--enterprise_search")
+    flags+=("--enterprise_search-ref-id=")
+    two_word_flags+=("--enterprise_search-ref-id")
+    local_nonpersistent_flags+=("--enterprise_search-ref-id=")
+    flags+=("--enterprise_search-size=")
+    two_word_flags+=("--enterprise_search-size")
+    local_nonpersistent_flags+=("--enterprise_search-size=")
+    flags+=("--enterprise_search-zones=")
+    two_word_flags+=("--enterprise_search-zones")
+    local_nonpersistent_flags+=("--enterprise_search-zones=")
+    flags+=("--es-node-topology=")
+    two_word_flags+=("--es-node-topology")
+    two_word_flags+=("-e")
+    local_nonpersistent_flags+=("--es-node-topology=")
+    flags+=("--es-ref-id=")
+    two_word_flags+=("--es-ref-id")
+    local_nonpersistent_flags+=("--es-ref-id=")
+    flags+=("--es-size=")
+    two_word_flags+=("--es-size")
+    local_nonpersistent_flags+=("--es-size=")
+    flags+=("--es-zones=")
+    two_word_flags+=("--es-zones")
+    local_nonpersistent_flags+=("--es-zones=")
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--generate-payload")
+    local_nonpersistent_flags+=("--generate-payload")
+    flags+=("--kibana-ref-id=")
+    two_word_flags+=("--kibana-ref-id")
+    local_nonpersistent_flags+=("--kibana-ref-id=")
+    flags+=("--kibana-size=")
+    two_word_flags+=("--kibana-size")
+    local_nonpersistent_flags+=("--kibana-size=")
+    flags+=("--kibana-zones=")
+    two_word_flags+=("--kibana-zones")
+    local_nonpersistent_flags+=("--kibana-zones=")
+    flags+=("--name=")
+    two_word_flags+=("--name")
+    local_nonpersistent_flags+=("--name=")
+    flags+=("--plugin=")
+    two_word_flags+=("--plugin")
+    local_nonpersistent_flags+=("--plugin=")
+    flags+=("--request-id=")
+    two_word_flags+=("--request-id")
+    local_nonpersistent_flags+=("--request-id=")
+    flags+=("--track")
+    flags+=("-t")
+    local_nonpersistent_flags+=("--track")
+    flags+=("--version=")
+    two_word_flags+=("--version")
+    local_nonpersistent_flags+=("--version=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_delete()
+{
+    last_command="ecctl_deployment_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_elasticsearch_keystore_show()
+{
+    last_command="ecctl_deployment_elasticsearch_keystore_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_elasticsearch_keystore_update()
+{
+    last_command="ecctl_deployment_elasticsearch_keystore_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    flags_with_completion+=("--file")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    two_word_flags+=("-p")
+    flags_with_completion+=("-p")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_elasticsearch_keystore()
+{
+    last_command="ecctl_deployment_elasticsearch_keystore"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("show")
+    commands+=("update")
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+        command_aliases+=("set")
+        aliashash["set"]="update"
+    fi
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("set")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_deployment_elasticsearch()
+{
+    last_command="ecctl_deployment_elasticsearch"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("keystore")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("keystore")
+    noun_aliases=()
+}
+
+_ecctl_deployment_list()
+{
+    last_command="ecctl_deployment_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_note_create()
+{
+    last_command="ecctl_deployment_note_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--comment=")
+    two_word_flags+=("--comment")
+    local_nonpersistent_flags+=("--comment=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--comment=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_note_list()
+{
+    last_command="ecctl_deployment_note_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_note_show()
+{
+    last_command="ecctl_deployment_note_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--id=")
+    two_word_flags+=("--id")
+    local_nonpersistent_flags+=("--id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--id=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_note_update()
+{
+    last_command="ecctl_deployment_note_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--comment=")
+    two_word_flags+=("--comment")
+    local_nonpersistent_flags+=("--comment=")
+    flags+=("--id=")
+    two_word_flags+=("--id")
+    local_nonpersistent_flags+=("--id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--comment=")
+    must_have_one_flag+=("--id=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_note()
+{
+    last_command="ecctl_deployment_note"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+        command_aliases+=("add")
+        aliashash["add"]="create"
+    fi
+    commands+=("list")
+    commands+=("show")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("add")
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_deployment_plan_cancel()
+{
+    last_command="ecctl_deployment_plan_cancel"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_plan()
+{
+    last_command="ecctl_deployment_plan"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("cancel")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("cancel")
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_delete()
+{
+    last_command="ecctl_deployment_resource_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_stateless_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_restore()
+{
+    last_command="ecctl_deployment_resource_restore"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--restore-snapshot")
+    local_nonpersistent_flags+=("--restore-snapshot")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_shutdown()
+{
+    last_command="ecctl_deployment_resource_shutdown"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--hide")
+    local_nonpersistent_flags+=("--hide")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--skip-snapshot")
+    local_nonpersistent_flags+=("--skip-snapshot")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_start()
+{
+    last_command="ecctl_deployment_resource_start"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--ignore-missing")
+    local_nonpersistent_flags+=("--ignore-missing")
+    flags+=("--instance-id=")
+    two_word_flags+=("--instance-id")
+    two_word_flags+=("-i")
+    local_nonpersistent_flags+=("--instance-id=")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_start-maintenance()
+{
+    last_command="ecctl_deployment_resource_start-maintenance"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--ignore-missing")
+    local_nonpersistent_flags+=("--ignore-missing")
+    flags+=("--instance-id=")
+    two_word_flags+=("--instance-id")
+    two_word_flags+=("-i")
+    local_nonpersistent_flags+=("--instance-id=")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_stop()
+{
+    last_command="ecctl_deployment_resource_stop"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--ignore-missing")
+    local_nonpersistent_flags+=("--ignore-missing")
+    flags+=("--instance-id=")
+    two_word_flags+=("--instance-id")
+    two_word_flags+=("-i")
+    local_nonpersistent_flags+=("--instance-id=")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_stop-maintenance()
+{
+    last_command="ecctl_deployment_resource_stop-maintenance"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--ignore-missing")
+    local_nonpersistent_flags+=("--ignore-missing")
+    flags+=("--instance-id=")
+    two_word_flags+=("--instance-id")
+    two_word_flags+=("-i")
+    local_nonpersistent_flags+=("--instance-id=")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource_upgrade()
+{
+    last_command="ecctl_deployment_resource_upgrade"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--track")
+    flags+=("-t")
+    local_nonpersistent_flags+=("--track")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--kind=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resource()
+{
+    last_command="ecctl_deployment_resource"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("delete")
+    commands+=("restore")
+    commands+=("shutdown")
+    commands+=("start")
+    commands+=("start-maintenance")
+    commands+=("stop")
+    commands+=("stop-maintenance")
+    commands+=("upgrade")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("restore")
+    must_have_one_noun+=("shutdown")
+    must_have_one_noun+=("start")
+    must_have_one_noun+=("start-maintenance")
+    must_have_one_noun+=("stop")
+    must_have_one_noun+=("stop-maintenance")
+    must_have_one_noun+=("upgrade")
+    noun_aliases=()
+}
+
+_ecctl_deployment_restore()
+{
+    last_command="ecctl_deployment_restore"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--restore-snapshot")
+    local_nonpersistent_flags+=("--restore-snapshot")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_resync()
+{
+    last_command="ecctl_deployment_resync"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_search()
+{
+    last_command="ecctl_deployment_search"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--file=")
+    must_have_one_flag+=("-f")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_show()
+{
+    last_command="ecctl_deployment_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--generate-update-payload")
+    local_nonpersistent_flags+=("--generate-update-payload")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    flags_with_completion+=("--kind")
+    flags_completion+=("__ecctl_valid_all_kinds")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--metadata")
+    flags+=("-m")
+    local_nonpersistent_flags+=("--metadata")
+    flags+=("--plan-defaults")
+    local_nonpersistent_flags+=("--plan-defaults")
+    flags+=("--plan-history")
+    local_nonpersistent_flags+=("--plan-history")
+    flags+=("--plan-logs")
+    local_nonpersistent_flags+=("--plan-logs")
+    flags+=("--plans")
+    local_nonpersistent_flags+=("--plans")
+    flags+=("--ref-id=")
+    two_word_flags+=("--ref-id")
+    local_nonpersistent_flags+=("--ref-id=")
+    flags+=("--settings")
+    flags+=("-s")
+    local_nonpersistent_flags+=("--settings")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_shutdown()
+{
+    last_command="ecctl_deployment_shutdown"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--skip-snapshot")
+    local_nonpersistent_flags+=("--skip-snapshot")
+    flags+=("--track")
+    flags+=("-t")
+    local_nonpersistent_flags+=("--track")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template_create()
+{
+    last_command="ecctl_deployment_template_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    flags_with_completion+=("--file")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    two_word_flags+=("-f")
+    flags_with_completion+=("-f")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--hide-instance-configurations")
+    local_nonpersistent_flags+=("--hide-instance-configurations")
+    flags+=("--template-id=")
+    two_word_flags+=("--template-id")
+    local_nonpersistent_flags+=("--template-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template_delete()
+{
+    last_command="ecctl_deployment_template_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--template-id=")
+    two_word_flags+=("--template-id")
+    local_nonpersistent_flags+=("--template-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--template-id=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template_list()
+{
+    last_command="ecctl_deployment_template_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--filter=")
+    two_word_flags+=("--filter")
+    local_nonpersistent_flags+=("--filter=")
+    flags+=("--hide-instance-configurations")
+    local_nonpersistent_flags+=("--hide-instance-configurations")
+    flags+=("--stack-version=")
+    two_word_flags+=("--stack-version")
+    local_nonpersistent_flags+=("--stack-version=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template_show()
+{
+    last_command="ecctl_deployment_template_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--hide-instance-configurations")
+    local_nonpersistent_flags+=("--hide-instance-configurations")
+    flags+=("--stack-version=")
+    two_word_flags+=("--stack-version")
+    local_nonpersistent_flags+=("--stack-version=")
+    flags+=("--template-id=")
+    two_word_flags+=("--template-id")
+    local_nonpersistent_flags+=("--template-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--template-id=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template_update()
+{
+    last_command="ecctl_deployment_template_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    flags_with_completion+=("--file")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    two_word_flags+=("-f")
+    flags_with_completion+=("-f")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--hide-instance-configurations")
+    local_nonpersistent_flags+=("--hide-instance-configurations")
+    flags+=("--template-id=")
+    two_word_flags+=("--template-id")
+    local_nonpersistent_flags+=("--template-id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--template-id=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment_template()
+{
+    last_command="ecctl_deployment_template"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_deployment_update()
+{
+    last_command="ecctl_deployment_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    flags_with_completion+=("--file")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    two_word_flags+=("-f")
+    flags_with_completion+=("-f")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--hide-pruned-orphans")
+    local_nonpersistent_flags+=("--hide-pruned-orphans")
+    flags+=("--prune-orphans")
+    local_nonpersistent_flags+=("--prune-orphans")
+    flags+=("--skip-snapshot")
+    local_nonpersistent_flags+=("--skip-snapshot")
+    flags+=("--track")
+    flags+=("-t")
+    local_nonpersistent_flags+=("--track")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--file=")
+    must_have_one_flag+=("-f")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_deployment()
+{
+    last_command="ecctl_deployment"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("elasticsearch")
+    commands+=("list")
+    commands+=("note")
+    commands+=("plan")
+    commands+=("resource")
+    commands+=("restore")
+    commands+=("resync")
+    commands+=("search")
+    commands+=("show")
+    commands+=("shutdown")
+    commands+=("template")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("elasticsearch")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("note")
+    must_have_one_noun+=("plan")
+    must_have_one_noun+=("resource")
+    must_have_one_noun+=("restore")
+    must_have_one_noun+=("resync")
+    must_have_one_noun+=("search")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("shutdown")
+    must_have_one_noun+=("template")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_generate_completions()
+{
+    last_command="ecctl_generate_completions"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--binary=")
+    two_word_flags+=("--binary")
+    local_nonpersistent_flags+=("--binary=")
+    flags+=("--help")
+    flags+=("-h")
+    local_nonpersistent_flags+=("--help")
+    flags+=("--location=")
+    two_word_flags+=("--location")
+    two_word_flags+=("-l")
+    local_nonpersistent_flags+=("--location=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_generate_docs()
+{
+    last_command="ecctl_generate_docs"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--location=")
+    two_word_flags+=("--location")
+    two_word_flags+=("-l")
+    local_nonpersistent_flags+=("--location=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_generate()
+{
+    last_command="ecctl_generate"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("completions")
+    commands+=("docs")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("completions")
+    must_have_one_noun+=("docs")
+    noun_aliases=()
+}
+
+_ecctl_init()
+{
+    last_command="ecctl_init"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_list()
+{
+    last_command="ecctl_platform_allocator_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--filter=")
+    two_word_flags+=("--filter")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--filter=")
+    flags+=("--metadata")
+    local_nonpersistent_flags+=("--metadata")
+    flags+=("--query=")
+    two_word_flags+=("--query")
+    local_nonpersistent_flags+=("--query=")
+    flags+=("--unhealthy")
+    local_nonpersistent_flags+=("--unhealthy")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_maintenance()
+{
+    last_command="ecctl_platform_allocator_maintenance"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--unset")
+    local_nonpersistent_flags+=("--unset")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_metadata_delete()
+{
+    last_command="ecctl_platform_allocator_metadata_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_metadata_set()
+{
+    last_command="ecctl_platform_allocator_metadata_set"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_metadata_show()
+{
+    last_command="ecctl_platform_allocator_metadata_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_metadata()
+{
+    last_command="ecctl_platform_allocator_metadata"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("delete")
+    commands+=("set")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("set")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_search()
+{
+    last_command="ecctl_platform_allocator_search"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--query=")
+    two_word_flags+=("--query")
+    local_nonpersistent_flags+=("--query=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_show()
+{
+    last_command="ecctl_platform_allocator_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--metadata")
+    local_nonpersistent_flags+=("--metadata")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator_vacate()
+{
+    last_command="ecctl_platform_allocator_vacate"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--allocator-down=")
+    two_word_flags+=("--allocator-down")
+    local_nonpersistent_flags+=("--allocator-down=")
+    flags+=("--concurrency=")
+    two_word_flags+=("--concurrency")
+    local_nonpersistent_flags+=("--concurrency=")
+    flags+=("--kind=")
+    two_word_flags+=("--kind")
+    two_word_flags+=("-k")
+    local_nonpersistent_flags+=("--kind=")
+    flags+=("--maintenance")
+    flags+=("-m")
+    local_nonpersistent_flags+=("--maintenance")
+    flags+=("--max-poll-retries=")
+    two_word_flags+=("--max-poll-retries")
+    local_nonpersistent_flags+=("--max-poll-retries=")
+    flags+=("--move-only")
+    local_nonpersistent_flags+=("--move-only")
+    flags+=("--override-failsafe")
+    local_nonpersistent_flags+=("--override-failsafe")
+    flags+=("--poll-frequency=")
+    two_word_flags+=("--poll-frequency")
+    local_nonpersistent_flags+=("--poll-frequency=")
+    flags+=("--resource-id=")
+    two_word_flags+=("--resource-id")
+    two_word_flags+=("-r")
+    local_nonpersistent_flags+=("--resource-id=")
+    flags+=("--skip-data-migration=")
+    two_word_flags+=("--skip-data-migration")
+    local_nonpersistent_flags+=("--skip-data-migration=")
+    flags+=("--skip-snapshot=")
+    two_word_flags+=("--skip-snapshot")
+    local_nonpersistent_flags+=("--skip-snapshot=")
+    flags+=("--skip-tracking")
+    local_nonpersistent_flags+=("--skip-tracking")
+    flags+=("--target=")
+    two_word_flags+=("--target")
+    two_word_flags+=("-t")
+    local_nonpersistent_flags+=("--target=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_allocator()
+{
+    last_command="ecctl_platform_allocator"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("list")
+    commands+=("maintenance")
+    commands+=("metadata")
+    commands+=("search")
+    commands+=("show")
+    commands+=("vacate")
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+        command_aliases+=("move-nodes")
+        aliashash["move-nodes"]="vacate"
+    fi
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("maintenance")
+    must_have_one_noun+=("metadata")
+    must_have_one_noun+=("move-nodes")
+    must_have_one_noun+=("search")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("vacate")
+    noun_aliases=()
+}
+
+_ecctl_platform_constructor_list()
+{
+    last_command="ecctl_platform_constructor_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_constructor_maintenance()
+{
+    last_command="ecctl_platform_constructor_maintenance"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--unset")
+    local_nonpersistent_flags+=("--unset")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_constructor_resync()
+{
+    last_command="ecctl_platform_constructor_resync"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_constructor_show()
+{
+    last_command="ecctl_platform_constructor_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_constructor()
+{
+    last_command="ecctl_platform_constructor"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("list")
+    commands+=("maintenance")
+    commands+=("resync")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("maintenance")
+    must_have_one_noun+=("resync")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_platform_enrollment-token_create()
+{
+    last_command="ecctl_platform_enrollment-token_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--role=")
+    two_word_flags+=("--role")
+    two_word_flags+=("-r")
+    local_nonpersistent_flags+=("--role=")
+    flags+=("--validity=")
+    two_word_flags+=("--validity")
+    two_word_flags+=("-v")
+    local_nonpersistent_flags+=("--validity=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--role=")
+    must_have_one_flag+=("-r")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_enrollment-token_delete()
+{
+    last_command="ecctl_platform_enrollment-token_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_enrollment-token_list()
+{
+    last_command="ecctl_platform_enrollment-token_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_enrollment-token()
+{
+    last_command="ecctl_platform_enrollment-token"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    noun_aliases=()
+}
+
+_ecctl_platform_info()
+{
+    last_command="ecctl_platform_info"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_create()
+{
+    last_command="ecctl_platform_instance-configuration_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--id=")
+    two_word_flags+=("--id")
+    local_nonpersistent_flags+=("--id=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_delete()
+{
+    last_command="ecctl_platform_instance-configuration_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_list()
+{
+    last_command="ecctl_platform_instance-configuration_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_pull()
+{
+    last_command="ecctl_platform_instance-configuration_pull"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--path=")
+    two_word_flags+=("--path")
+    two_word_flags+=("-p")
+    local_nonpersistent_flags+=("--path=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--path=")
+    must_have_one_flag+=("-p")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_show()
+{
+    last_command="ecctl_platform_instance-configuration_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration_update()
+{
+    last_command="ecctl_platform_instance-configuration_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_instance-configuration()
+{
+    last_command="ecctl_platform_instance-configuration"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+    commands+=("pull")
+    commands+=("show")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("pull")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group_create()
+{
+    last_command="ecctl_platform_proxy_filtered-group_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--expected-proxies-count=")
+    two_word_flags+=("--expected-proxies-count")
+    local_nonpersistent_flags+=("--expected-proxies-count=")
+    flags+=("--filters=")
+    two_word_flags+=("--filters")
+    local_nonpersistent_flags+=("--filters=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group_delete()
+{
+    last_command="ecctl_platform_proxy_filtered-group_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group_list()
+{
+    last_command="ecctl_platform_proxy_filtered-group_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group_show()
+{
+    last_command="ecctl_platform_proxy_filtered-group_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group_update()
+{
+    last_command="ecctl_platform_proxy_filtered-group_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--expected-proxies-count=")
+    two_word_flags+=("--expected-proxies-count")
+    local_nonpersistent_flags+=("--expected-proxies-count=")
+    flags+=("--filters=")
+    two_word_flags+=("--filters")
+    local_nonpersistent_flags+=("--filters=")
+    flags+=("--version=")
+    two_word_flags+=("--version")
+    local_nonpersistent_flags+=("--version=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_filtered-group()
+{
+    last_command="ecctl_platform_proxy_filtered-group"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_list()
+{
+    last_command="ecctl_platform_proxy_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy_show()
+{
+    last_command="ecctl_platform_proxy_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_proxy()
+{
+    last_command="ecctl_platform_proxy"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("filtered-group")
+    commands+=("list")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("filtered-group")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_platform_repository_create()
+{
+    last_command="ecctl_platform_repository_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--settings=")
+    two_word_flags+=("--settings")
+    flags_with_completion+=("--settings")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json|yaml|yml")
+    local_nonpersistent_flags+=("--settings=")
+    flags+=("--type=")
+    two_word_flags+=("--type")
+    local_nonpersistent_flags+=("--type=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_repository_delete()
+{
+    last_command="ecctl_platform_repository_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_repository_list()
+{
+    last_command="ecctl_platform_repository_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_repository_show()
+{
+    last_command="ecctl_platform_repository_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_repository()
+{
+    last_command="ecctl_platform_repository"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    if [[ -z "${BASH_VERSION}" || "${BASH_VERSINFO[0]}" -gt 3 ]]; then
+        command_aliases+=("set")
+        aliashash["set"]="create"
+        command_aliases+=("update")
+        aliashash["update"]="create"
+    fi
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("set")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_platform_role_create()
+{
+    last_command="ecctl_platform_role_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    flags_with_completion+=("--file")
+    flags_completion+=("__ecctl_handle_filename_extension_flag json")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--file=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_role_delete()
+{
+    last_command="ecctl_platform_role_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_role_list()
+{
+    last_command="ecctl_platform_role_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_role_show()
+{
+    last_command="ecctl_platform_role_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_role()
+{
+    last_command="ecctl_platform_role"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_platform_runner_list()
+{
+    last_command="ecctl_platform_runner_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_runner_resync()
+{
+    last_command="ecctl_platform_runner_resync"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_runner_search()
+{
+    last_command="ecctl_platform_runner_search"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--file=")
+    two_word_flags+=("--file")
+    two_word_flags+=("-f")
+    local_nonpersistent_flags+=("--file=")
+    flags+=("--query=")
+    two_word_flags+=("--query")
+    local_nonpersistent_flags+=("--query=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_runner_show()
+{
+    last_command="ecctl_platform_runner_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_platform_runner()
+{
+    last_command="ecctl_platform_runner"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("list")
+    commands+=("resync")
+    commands+=("search")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("resync")
+    must_have_one_noun+=("search")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_platform()
+{
+    last_command="ecctl_platform"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("allocator")
+    commands+=("constructor")
+    commands+=("enrollment-token")
+    commands+=("info")
+    commands+=("instance-configuration")
+    commands+=("proxy")
+    commands+=("repository")
+    commands+=("role")
+    commands+=("runner")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("allocator")
+    must_have_one_noun+=("constructor")
+    must_have_one_noun+=("enrollment-token")
+    must_have_one_noun+=("info")
+    must_have_one_noun+=("instance-configuration")
+    must_have_one_noun+=("proxy")
+    must_have_one_noun+=("repository")
+    must_have_one_noun+=("role")
+    must_have_one_noun+=("runner")
+    noun_aliases=()
+}
+
+_ecctl_stack_delete()
+{
+    last_command="ecctl_stack_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_stack_list()
+{
+    last_command="ecctl_stack_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--deleted")
+    flags+=("-d")
+    local_nonpersistent_flags+=("--deleted")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_stack_show()
+{
+    last_command="ecctl_stack_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_stack_upload()
+{
+    last_command="ecctl_stack_upload"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_stack()
+{
+    last_command="ecctl_stack"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+    commands+=("upload")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("upload")
+    noun_aliases=()
+}
+
+_ecctl_user_create()
+{
+    last_command="ecctl_user_create"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--email=")
+    two_word_flags+=("--email")
+    local_nonpersistent_flags+=("--email=")
+    flags+=("--fullname=")
+    two_word_flags+=("--fullname")
+    local_nonpersistent_flags+=("--fullname=")
+    flags+=("--insecure-password=")
+    two_word_flags+=("--insecure-password")
+    local_nonpersistent_flags+=("--insecure-password=")
+    flags+=("--role=")
+    two_word_flags+=("--role")
+    local_nonpersistent_flags+=("--role=")
+    flags+=("--username=")
+    two_word_flags+=("--username")
+    local_nonpersistent_flags+=("--username=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_flag+=("--role=")
+    must_have_one_flag+=("--username=")
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_delete()
+{
+    last_command="ecctl_user_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_disable()
+{
+    last_command="ecctl_user_disable"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_enable()
+{
+    last_command="ecctl_user_enable"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_key_delete()
+{
+    last_command="ecctl_user_key_delete"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_key_list()
+{
+    last_command="ecctl_user_key_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--all")
+    local_nonpersistent_flags+=("--all")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_key_show()
+{
+    last_command="ecctl_user_key_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_key()
+{
+    last_command="ecctl_user_key"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("delete")
+    commands+=("list")
+    commands+=("show")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    noun_aliases=()
+}
+
+_ecctl_user_list()
+{
+    last_command="ecctl_user_list"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_show()
+{
+    last_command="ecctl_user_show"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--current")
+    local_nonpersistent_flags+=("--current")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user_update()
+{
+    last_command="ecctl_user_update"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--current")
+    local_nonpersistent_flags+=("--current")
+    flags+=("--email=")
+    two_word_flags+=("--email")
+    local_nonpersistent_flags+=("--email=")
+    flags+=("--fullname=")
+    two_word_flags+=("--fullname")
+    local_nonpersistent_flags+=("--fullname=")
+    flags+=("--insecure-password=")
+    two_word_flags+=("--insecure-password")
+    local_nonpersistent_flags+=("--insecure-password=")
+    flags+=("--password")
+    local_nonpersistent_flags+=("--password")
+    flags+=("--role=")
+    two_word_flags+=("--role")
+    local_nonpersistent_flags+=("--role=")
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_user()
+{
+    last_command="ecctl_user"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("create")
+    commands+=("delete")
+    commands+=("disable")
+    commands+=("enable")
+    commands+=("key")
+    commands+=("list")
+    commands+=("show")
+    commands+=("update")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("create")
+    must_have_one_noun+=("delete")
+    must_have_one_noun+=("disable")
+    must_have_one_noun+=("enable")
+    must_have_one_noun+=("key")
+    must_have_one_noun+=("list")
+    must_have_one_noun+=("show")
+    must_have_one_noun+=("update")
+    noun_aliases=()
+}
+
+_ecctl_version()
+{
+    last_command="ecctl_version"
+
+    command_aliases=()
+
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    noun_aliases=()
+}
+
+_ecctl_root_command()
+{
+    last_command="ecctl"
+
+    command_aliases=()
+
+    commands=()
+    commands+=("auth")
+    commands+=("deployment")
+    commands+=("generate")
+    commands+=("init")
+    commands+=("platform")
+    commands+=("stack")
+    commands+=("user")
+    commands+=("version")
+
+    flags=()
+    two_word_flags=()
+    local_nonpersistent_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--api-key=")
+    two_word_flags+=("--api-key")
+    flags+=("--config=")
+    two_word_flags+=("--config")
+    flags+=("--force")
+    flags+=("--format=")
+    two_word_flags+=("--format")
+    flags+=("--host=")
+    two_word_flags+=("--host")
+    flags+=("--insecure")
+    flags+=("--message=")
+    two_word_flags+=("--message")
+    flags+=("--output=")
+    two_word_flags+=("--output")
+    flags+=("--pass=")
+    two_word_flags+=("--pass")
+    flags+=("--pprof")
+    flags+=("--quiet")
+    flags+=("-q")
+    flags+=("--region=")
+    two_word_flags+=("--region")
+    flags_with_completion+=("--region")
+    flags_completion+=("__ecctl_valid_regions")
+    flags+=("--timeout=")
+    two_word_flags+=("--timeout")
+    flags+=("--trace")
+    flags+=("--user=")
+    two_word_flags+=("--user")
+    flags+=("--verbose")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+    must_have_one_noun+=("auth")
+    must_have_one_noun+=("deployment")
+    must_have_one_noun+=("generate")
+    must_have_one_noun+=("init")
+    must_have_one_noun+=("platform")
+    must_have_one_noun+=("stack")
+    must_have_one_noun+=("user")
+    must_have_one_noun+=("version")
+    noun_aliases=()
+}
+
+__start_ecctl()
+{
+    local cur prev words cword
+    declare -A flaghash 2>/dev/null || :
+    declare -A aliashash 2>/dev/null || :
+    if declare -F _init_completion >/dev/null 2>&1; then
+        _init_completion -s || return
+    else
+        __ecctl_init_completion -n "=" || return
+    fi
+
+    local c=0
+    local flags=()
+    local two_word_flags=()
+    local local_nonpersistent_flags=()
+    local flags_with_completion=()
+    local flags_completion=()
+    local commands=("ecctl")
+    local must_have_one_flag=()
+    local must_have_one_noun=()
+    local has_completion_function
+    local last_command
+    local nouns=()
+
+    __ecctl_handle_word
+}
+
+if [[ $(type -t compopt) = "builtin" ]]; then
+    complete -o default -F __start_ecctl ecctl
+else
+    complete -o default -o nospace -F __start_ecctl ecctl
+fi
+
+# ex: ts=4 sw=4 et filetype=sh

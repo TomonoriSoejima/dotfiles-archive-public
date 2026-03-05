@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="UsagesStatistic" time="1391942224563" allowed="true" show-notification="false" period="weekly">
+    <group id="JavaScript versions" priority="0.0" data="DEFAULT=0" />
+    <group id="Look and Feel" priority="0.0" data="Mac OS X - Default=1" />
+    <group id="compiler" priority="0.0" data="external_build=1" />
+    <group id="disabled-plugins" priority="0.0" data="PerforceDirectPlugin=0,ClearcasePlugin=0,CVS=0,SourceSafe=0,Subversion=0,hg4idea=0,TFS=0,Jetty=1,XSLT-Debugger=1,Coverage=1,Weblogic=1,com.intellij.css=1,com.intellij.javaee.view=1,AntSupport=1,com.intellij.persistence.database=0,QuirksMode=1,org.jetbrains.plugins.javaFX=1,Resin=1,TestNG-J=1,com.intellij.seam.pageflow=1,cucumber-groovy=1,com.intellij.ui-designer-new=1,Emma=1,com.intellij.spring.roo=1,com.intellij.drools=1,CFML Support=1,Structural Search=1,org.jetbrains.plugins.less=1,com.intellij.velocity=1,com.intellij.uiDesigner=1,com.intellij.seam.pages=1,WebSphere=1,IntentionPowerPack=1,com.intellij.cdi=1,com.intellij.spring.batch=1,com.intellij.persistence=1,com.intellij.aop=1,com.intellij.play=1,com.intellij.spring.webflow=1,CloudBees=1,StrutsAssistant=1,com.intellij.seam=1,GuiceyIDEA=1,com.intellij.tasks=1,JSIntentionPowerPack=1,XPathView=1,JBPM=1,org.coffeescript=1,com.intellij.copyright=1,com.jetbrains.plugins.webDeployment=1,ZKM=1,com.intellij.commander=1,org.jetbrains.plugins.sass=1,Inspection-JS=1,Type Migration=1,org.jetbrains.plugins.haml=1,Geronimo=1,Glassfish=1,com.intellij.gwt=1,J2ME=1,org.intellij.intelliLang=1,com.intellij.struts2=1,com.intellij.javaee=1,com.intellij.spring=1,ByteCodeViewer=1,org.jetbrains.plugins.gradle=1,JavaScriptDebugger=1,com.intellij.hibernate=1,com.intellij.spring.osgi=1,DevKit=1,W3Validators=1,JSR45Plugin=1,com.intellij.java-i18n=1,cucumber=1,org.intellij.groovy=1,com.intellij.vaadin=1,GenerateToString=1,com.intellij.dsm=1,com.intellij.beanValidation=1,HtmlTools=1,com.jetbrains.restClient=1,org.jetbrains.android=1,com.intellij.tapestry=1,IDEtalk=1,com.jetbrains.jarFinder=1,com.intellij.spring.ws=1,Refactor-X=1,WebServicesPlugin=1,org.jetbrains.idea.eclipse=1,com.jetbrains.plugins.asp=1,Osmorc=1,JUnit=1,JavaScript=1,org.intellij.grails=1,com.intellij.aspectj=1,com.intellij.android-designer=1,org.jetbrains.plugins.yaml=1,org.jetbrains.plugins.remote-run=1,com.intellij.flex=1,InspectionGadgets=1,com.intellij.dmserver=1,Tomcat=1,com.intellij.spring.integration=1,com.intellij.appengine=1,com.intellij.jsp=1,com.intellij.sql=1,com.intellij.spring.data=1,cucumber-java=1,JBoss=1,CloudFoundry=1,com.intellij.freemarker=1,com.intellij.jsf=1,com.intellij.spring.security=1" />
+    <group id="features counts" priority="0.0" data="uml.ShowDiagram.JAVA=5,execute.Remote.Debug=106,uml.ShowDiagram.MODULES.popup=1,uml.ShowDiagram.MODULES=3,execute.Application.Run=77,execute.Application.Debug=33" />
+    <group id="file-type" priority="0.0" data="DTD=5,Properties=9,Images=4,HTML=6,PLAIN_TEXT=13,ASP=0,Eclipse=0,JavaScript=0,JSP=0,JAVA=18,IDEA_MODULE=18,ARCHIVE=6,SQL=0,Native=3,XML=15,CSS=0,Manifest=0,UNKNOWN=18,CLASS=6,SQL files=3,UML=1,DATASOURCE_STORAGE=2" />
+    <group id="javaScript Scope Usages" priority="0.0" data="Project=0" />
+    <group id="jdbc-datasource" priority="0.0" data="/=1,null/null=2" />
+    <group id="jdbc-driver" priority="0.0" data="com.mysql.jdbc.Driver=3" />
+    <group id="language-level" priority="0.0" data="JDK_1_6=18" />
+    <group id="module type" priority="0.0" data="JAVA_MODULE=18" />
+    <group id="non-bundled-plugins" priority="0.0" data="com.intellij=1,org.bitbucket.connector=1" />
+    <group id="productivity" priority="0.0" data="diagram.show=9,editing.select.word=615,navigation.popup.file=3,navigation.popup.class=101,navigation.goto.declaration=79,navigation.goto.implementation=23,navigation.popup.camelprefix=3,editing.completion.variable.name=31,codeassists.highlight.return=5,editing.completion.basic=44,db.table.editor=6,codeassists.comment.line=12,diagram.show.popup=1,db.console=7,codeassists.highlight.throws=5,editing.completion.finishByControlEnter=10,db.console.run.intention=23,refactoring.copyClass=1,ui.tree.speedsearch=1,editing.completion.replace=27,editing.completion.camelHumps=1" />
+    <group id="run-configuration-type" priority="0.0" data="Remote=4" />
+    <group id="run-configuration-type-temp" priority="0.0" data="MavenRunConfiguration=0,Application=4" />
+    <group id="vcs" priority="0.0" data="Git=6,CVS=1" />
+  </component>
+</application>
+

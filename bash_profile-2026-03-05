@@ -1,0 +1,856 @@
+#
+#  Description:  This file holds all my BASH configurations and aliases
+#
+#  Sections:
+#  1.   Environment Configuration
+#  2.   Make Terminal Better (remapping defaults and adding functionality)
+#  3.   File and Folder Management
+#  4.   ESP
+#  5.   Process Management
+#  6.   Networking(AZURE)
+#  7.   GBS(work stuff)
+#  8.   Web Development(experiment)
+#  9.   Reminders & Notes
+#
+
+
+#   -------------------------------
+#   1.  ENVIRONMENT CONFIGURATION
+#   -------------------------------
+
+#   Change Prompt
+#   ------------------------------------------------------------
+    export PS1='\[\e[0;36m\][\h:\W]$ \[\e[0m\]'
+
+    # export PS1="________________________________________________________________________________\n| \w @ \h (\u) \n| => "
+    # export PS2="| => "
+
+#   Set Paths
+#   ------------------------------------------------------------
+    export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin
+    export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
+    export PATH="$HOME/.local/bin:$PATH"
+    export PATH="$PATH:/Users/username/Dropbox/dev/bashtools:/Users/username/Dropbox/dev/pythontools"
+    # added by Anaconda 1.8.0 installer
+    export PATH="/Users/username/anaconda/bin:$PATH"
+    export PATH=$PATH:/usr/local/opt/go/libexec/bin
+    export PATH=$PATH:~/elastic/source/support/agentTools/at-a-glance/
+    export PATH=$PATH:~/elastic/source/support/agentTools/SFDC-offline
+    export PATH=$PATH:~/elastic/labs/restore_api_builder
+
+          
+
+    # java classpath
+    export CLASSPATH="/Users/username/Dropbox/dev/lab/lib"
+	# export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-10.jdk/Contents/Home"
+	# export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk1.8.0_161.jdk/Contents/Home"
+        # export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-11.0.5.jdk/Contents/Home"
+	export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-17.0.1.jdk/Contents/Home"
+	# export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-13.0.1.jdk/Contents/Home"
+	# gopath
+	export GOPATH=/usr/local/go/
+	#export GOPATH=$HOME/.go
+	export PATH=$PATH:$GOPATH/bin
+
+	# elastic stuff
+	export ES_TMPDIR=/tmp
+
+#   -----------------------------
+#   2.  MAKE TERMINAL BETTER
+#   -----------------------------
+
+alias ..='cd ../'                           # Go back 1 directory level
+alias ...='cd ../../'                       # Go back 2 directory levels
+alias .3='cd ../../../'                     # Go back 3 directory levels
+alias .4='cd ../../../../'                  # Go back 4 directory levels
+alias .5='cd ../../../../../'               # Go back 5 directory levels
+alias .6='cd ../../../../../../'            # Go back 6 directory levels
+
+# new stuff in 2022
+alias lc='colorls -lA --sd'
+
+
+# for hadoop
+alias hstart="/usr/local/Cellar/hadoop/2.8.0/sbin/start-dfs.sh;/usr/local/Cellar/hadoop/2.8.0/sbin/start-yarn.sh"
+alias hstop="/usr/local/Cellar/hadoop/2.8.0/sbin/stop-yarn.sh;/usr/local/Cellar/hadoop/2.8.0/sbin/stop-dfs.sh"
+
+
+# ssh stuff
+eval `ssh-agent` > /dev/null
+ssh-add  >/dev/null 2>&1
+
+# alias forever
+
+alias xargs="xargs -P 100"
+alias o='open .'
+#shopt -s cdspell autocd globstar
+alias sed="gsed"
+
+alias ll="ls -ltrh"
+alias zip="zip -9"
+alias unzip="unzip"
+alias less="less -NX -i"
+export GREP_COLOR='1;32'
+alias cgrep="grep --color=auto"
+alias ecgrep="egrep --color=auto"
+
+alias down="open ~/Downloads"
+alias cdown="cd ~/Downloads"
+alias fl="find .  | cat -n"
+
+#MSSOLVE STUFF
+alias sol="nl -s '. '"
+alias which='type -all'     
+
+# find your public IP address
+alias ca="dscacheutil -flushcache"
+alias ip="wget -O - -q icanhazip.com"
+alias wget="wget -qO- --no-proxy" 
+
+# support stuff
+koko="https://github.com/elastic/"
+alias dev="open $koko/support-support-help/issues $koko/support-dev-help/issues $koko/support-dev-help-elasticsearch/issues"
+
+
+alias gl="gcloud compute instances list | egrep '(NAME|tomo)'"
+alias my="syncMyTicketsToDisk.sh"
+
+# environment variable
+export HISTCONTROL=erasedups
+shopt -s histappend
+export PROMPT_COMMAND='history -a'
+export HISTSIZE="1000000"
+export __CF_USER_TEXT_ENCODING=0x1F5:0x8000100:0x8000100
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+#export LANG="ja_JP.UTF-8"
+export LESS="-I -G -M"
+#export HISTIGNORE="&:ls:ls -ltr:[bf]g:cd:pwd:history"
+export HISTIGNORE="&:[ ]*:exit"
+export PAGER=less
+#export LESSOPEN='| /opt/local/bin/lesspipe.sh %s'
+export LESS="-R"
+export JLESSCHARSET=utf-8  
+export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+
+# dotnet stuff
+# ln -s /usr/local/share/dotnet/bin/dotnet /usr/local/bin/
+# ln -s /usr/local/share/dotnet/bin/csc /usr/local/bin/
+
+#   ---------------------------
+#   4.  ESP
+#   ---------------------------
+
+
+# special esp function
+if [ "$(uname)" != "Darwin" ]
+then
+source ~/dotfiles/esp.utils.sh
+else 
+# source ~/Dropbox/Mackup/esp.utils.sh
+source ~/Dropbox/Mackup/elastic.utils.sh
+
+source ~/Dropbox/Mackup/labor_profile
+fi
+
+# this was used to keep KPI
+
+
+
+
+#   ---------------------------
+#   6.  NETWORKING(AZURE)
+#   ---------------------------
+# azue for tomonori.soejima@hotmail.com
+alias soetom1="ssh -i ~/.ssh/azure.soetom1/myPrivateKey.key soetom1.cloudapp.net"
+alias so-esp="ssh -i ~/.ssh/azure.soetom1/myPrivateKey.key soetom1.cloudapp.net -L 16089:soetom1.soetom1.l5.internal.cloudapp.net:16089 -L 16000:soetom1.soetom1.l5.internal.cloudapp.net:16000 -L 15100:soetom1.soetom1.l5.internal.cloudapp.net:15100"
+alias soetom2="ssh -i ~/.ssh/azure.soetom2/myPrivateKey.key soetom2.cloudapp.net"
+alias so-esp="ssh -i ~/.ssh/azure.soetom1/myPrivateKey.key soetom1.cloudapp.net -L 16089:soetom1.soetom1.l5.internal.cloudapp.net:16089 -L 16000:soetom1.soetom1.l5.internal.cloudapp.net:16000 -L 15100:soetom1.soetom1.l5.internal.cloudapp.net:15100"
+alias tomonos="ssh user@tomonos1.cloudapp.net"
+# azure 
+alias azure_login="azure login -u jpspaz@microsoft.com -p Moss-1505"
+
+function to-soetom1 () {
+	scp -i ~/.ssh/azure.soetom1/myPrivateKey.key $1 soetom1.cloudapp.net:
+}
+
+function from-soetom1 () {
+  scp -i ~/.ssh/azure.soetom1/myPrivateKey.key  soetom1.cloudapp.net:~/$1 .
+}
+
+
+#   ---------------------------
+#   7.  GBS(work stuff)
+#   ---------------------------
+
+# login settings alias
+
+
+
+
+
+if [ "$(uname)" == "Darwin" ]
+then
+	source work_profile
+fi
+
+cu () { cd ~/Logs/$1 ; }
+
+_esplog() {
+  local cur
+  cur=${COMP_WORDS[COMP_CWORD]}
+  COMPREPLY=( $( compgen -S/ -d ~/Logs/$cur |  sed -e s,^.*Logs\/,,  ) )
+  #COMPREPLY=( $( compgen -S/ -d ~/Logs/APAC-$cur | sed -e s,^.*Logs\/,,  ) )
+  #COMPREPLY=( $( compgen -S/ -d ~/Logs/APAC-$cur | sed -e s,^.*APAC-,,  ) )
+}
+
+complete -o nospace -F _esplog cu
+
+
+ses () { cd ~/elastic/labs/$1 ; }
+
+_elsdir() {
+  local cur
+  cur=${COMP_WORDS[COMP_CWORD]}
+  COMPREPLY=( $( compgen -S/ -d ~/elastic/labs/$cur |  sed -e s,^.*labs\/,,) )
+}
+
+complete -o nospace -F _elsdir ses
+
+
+
+function gg() {
+    case="~/elastic/logs/$1"
+    # for some reason when mkdir -p $case does not create directory.
+    if [ ! -d ~/elastic/logs/$1 ]; 
+    then
+      echo creating  ~/elastic/logs/$1
+      mkdir ~/elastic/logs/$1
+
+    fi
+
+    echo moviing files downloaded within last 30 min to $case
+    find ~/Downloads/ -cmin -30 -type f 
+    find ~/Downloads/ -cmin -30 -type f | xargs -I% mv % ~/elastic/logs/$1
+   
+    cd ~/elastic/logs/$1 && open .
+    code .
+    #cd ~/elastic/logs/$1 && code . && open .
+   
+}
+
+
+function sfdc() {
+     cd ~/elastic/source/support/sfdc-downloader/
+     python3 downloader.py
+}
+
+
+function gs() {
+  project=$(gcloud config list --format 'value(core.project)')
+  zone=$(gcloud compute instances list  | grep $1 | awk '{print $2}')
+  echo gcloud compute ssh --zone $zone $1 --project $project
+  gcloud compute ssh --zone $zone $1 --project $project
+   
+}
+
+function gsk() {
+  project=$(gcloud config list --format 'value(core.project)')
+  zone=$(gcloud compute instances list  | grep $1 | awk '{print $2}')
+  echo gcloud compute ssh --ssh-flag="-L 5801:localhost:5601" --zone $zone $1 --project $project
+  gcloud compute ssh --ssh-flag="-L 5801:localhost:5601" --zone $zone $1 --project $project
+
+
+  echo open http://localhost:5701
+   
+}
+
+
+function gcp() {
+  project=$(gcloud config list --format 'value(core.project)')
+  zone=$(gcloud compute instances list  | grep $1 | awk '{print $2}')
+  echo gcloud compute scp  --zone $zone --project $project $1 $2:. 
+  gcloud compute scp --zone $zone --project $project $2 $1:. 
+   
+}
+
+
+# function gs() {
+#   project=$(gcloud config list --format 'value(core.project)')
+#   zone=$(gcloud compute instances list | egrep '(NAME|tomo)' | grep $1 | awk '{print $2}')
+#   gcloud beta compute ssh --zone $zone $1 --project $project
+   
+# }
+
+
+
+
+function g() {
+  cd ~/cases
+  cd $(ls -1tr | tail -1)
+
+}
+
+
+
+# Function to execute docker exec into a container with bash
+dockbash() {
+    if [ -z "$1" ]; then
+        echo "Usage: dockbash <container_name>"
+        return 1
+    fi
+    docker exec -it "$1" bash
+}
+
+
+title() {
+  if [ -z "$1" ]; then
+    printf "\033]0;%s\007" "$(pwd)"
+  else
+    printf "\033]0;%s\007" "$1"
+  fi
+}
+
+
+# List all Terminal tabs
+tabs() {
+osascript -e '
+tell application "Terminal"
+    set window_list to every window
+    set output to ""
+    set counter to 1
+    repeat with w in window_list
+        set tab_list to every tab of w
+        repeat with t in tab_list
+            try
+                set output to output & "[" & counter & "] " & (custom title of t) & linefeed
+            on error
+                set output to output & "[" & counter & "] [no title]" & linefeed
+            end try
+            set counter to counter + 1
+        end repeat
+    end repeat
+    return output
+end tell
+'
+}
+
+
+jump_tab() {
+  local output
+  output=$(osascript -e '
+  tell application "Terminal"
+      set window_list to every window
+      set output to ""
+      set counter to 1
+      repeat with w in window_list
+          set tab_list to every tab of w
+          repeat with t in tab_list
+              try
+                  set output to output & counter & ": " & (custom title of t) & linefeed
+              on error
+                  set output to output & counter & ": [no title]" & linefeed
+              end try
+              set counter to counter + 1
+          end repeat
+      end repeat
+      return output
+  end tell
+  ')
+  
+  echo "$output"
+  
+  echo -n "Enter tab number to jump to: "
+  read tab_num
+
+  osascript -e "
+  tell application \"Terminal\"
+      set window_list to every window
+      set counter to 1
+      repeat with w in window_list
+          set tab_list to every tab of w
+          repeat with t in tab_list
+              if counter = $tab_num then
+                  set selected tab of w to t
+                  set frontmost of w to true
+                  activate
+                  return
+              end if
+              set counter to counter + 1
+          end repeat
+      end repeat
+  end tell
+  "
+}
+
+
+# Completion function for dockbash using docker ps
+_dockbash_completions() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    COMPREPLY=( $(compgen -W "$(docker ps --format '{{.Names}}')" -- "$cur") )
+}
+
+# Enable auto-completion for dockbash
+complete -F _dockbash_completions dockbash
+  
+
+
+dcup() {
+  local yml
+  yml=$(fd --glob '*compose*.yml' "$HOME/elastic/lab" 2>/dev/null | fzf) || return
+  cd "$(dirname "$yml")" || return
+  docker compose -f "$(basename "$yml")" up
+}
+
+
+function gcl() {
+  git clone $1 
+  echo 
+  cd $(echo $1 | awk -F '/' '{print $NF}' | sed -e s/.git//)
+}
+
+#   ---------------------------
+#   8.  Web Development(experiment)
+#   ---------------------------
+
+if [ "$(uname)" == "Darwin" ]
+then
+	source demo_profile
+fi
+
+function server() { # via https://gist.github.com/1525217
+    local host=`hostname`
+    local port="${1:-8888}"
+    (sleep 1 && open "http://${host}:${port}/")&
+    python -m SimpleHTTPServer "$port"
+
+}
+
+
+
+alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.stdin.readline())"'
+
+alias venv="source ~/.venvs/global/bin/activate"
+
+
+# source /usr/local/lib/dnx/bin/dnvm.sh
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="/Users/username/.sdkman"
+[[ -s "/Users/username/.sdkman/bin/sdkman-init.sh" ]] && source "/Users/username/.sdkman/bin/sdkman-init.sh"
+
+
+
+# # Setting PATH for Python 3.6
+# # The original version is saved in .bash_profile.pysave
+# PATH="/Library/Frameworks/Python.framework/Versions/3.9/bin:${PATH}"
+# export PATH
+
+
+
+# eval "$(rbenv init -)"
+
+
+
+
+
+
+
+#if [ -f $(brew --prefix)/etc/bash_completion ]; then
+#    . $(brew --prefix)/etc/bash_completion
+#fi
+
+# source <(ecctl generate completions)
+
+. /Users/username/Dropbox/Mackup/ecctl.completion
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/username/elastic/labs/google-cloud-sdk/path.bash.inc' ]; then . '/Users/username/elastic/labs/google-cloud-sdk/path.bash.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/username/elastic/labs/google-cloud-sdkcompletion.bash.inc' ]; then . '/Users/username/elastic/labs/google-cloud-sdk/completion.bash.inc'; fi
+#source $(brew --prefix nvm)/nvm.sh
+
+
+
+export EC_API_KEY=████████████████████
+
+
+
+#eval "$(starship init bash)"
+#eval "$(/opt/homebrew/bin/brew shellenv)"
+
+
+#export SDKMAN_DIR=$(brew --prefix sdkman-cli)/libexec
+#[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
+
+
+
+export OPENAI_API_KEY=sk-████████████████████
+export EC_API_KEY=████████████████████
+
+# peco_search_history() {
+#     SELECTED_COMMAND=$(tail -r ~/.bash_history | peco)
+#     if [ "$SELECTED_COMMAND" != "" ]; then
+#         echo "exec: ${SELECTED_COMMAND}"
+#         eval $SELECTED_COMMAND
+#         history -s $SELECTED_COMMAND
+#     fi
+# }
+# bind -x '"\C-r": peco_search_history'
+
+
+
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
+
+#eval "$(fasd --init auto)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+
+
+
+
+function _update_ps1() {
+    PS1="$(powerline-go -error $?)"
+}
+
+PROMPT_COMMAND="_update_ps1; $PROMPT_COMMAND"
+
+test -f "/Library/Scripts/elastic-env.sh" && source "/Library/Scripts/elastic-env.sh"
+
+. "$HOME/.local/bin/env"
+if [ -f ~/.bashrc ]; then source ~/.bashrc; fi
+
+# ny() function for bash
+ny() {
+    (cd /Users/username/elastic/iroiro/sfdc-tomo && python3 feed_downloader_simple.py "$@")
+    
+    if [[ -n "$1" ]]; then
+        local ticket_dir=$(ls -d ~/tickets/"$1"* 2>/dev/null | head -1)
+        if [[ -n "$ticket_dir" && -d "$ticket_dir" ]]; then
+            mkdir -p "$ticket_dir/.github"
+            rm -f "$ticket_dir/.github/copilot-instructions.md"
+            ln -s ~/support-templates/copilot-instructions.md "$ticket_dir/.github/copilot-instructions.md"
+            echo "✓ Copilot instructions symlinked"
+        fi
+    fi
+}
+
+
+
+# requires env variables (ELASTIC_ECE_KEY, ELASTIC_ECE_GOV_KEY)
+# takes a string ES API URI, ex ("_cluster/health", "/")
+
+ELASTIC_ECE_KEY=████████████████████="
+
+function ess {
+  authX="Authorization: APIKey ${ELASTIC_ECE_KEY}"
+  BASE="https://adminconsole.found.no"
+  ## https://github.com/elastic/support-tech-lead/issues/1479
+  # FLEET_OVERRIDE="x-elastic-product-origin:fleet"
+  FLEET_OVERRIDE="asdf:asdf"
+  ##
+  MGMNT="X-Management-Request: true"
+  PREREQ='👻 1st cache ID via "echo DEPLOYMENT_ID > .d" or "echo PROJECT_ID > .p"'
+  
+
+  # load directory variable caches: .d, .esRefId, .p, .gov
+  ID=
+  REF_ID=
+  IS_ECH=
+  IS_GOV=False
+  # 2025Sep16 13% "Serverless" cases have Deployment IDs so if both(.d, .p) default believe .d 
+  if [[ -f './.d' ]]; then 
+    IS_ECH=true
+    ID=$(cat "./.d") 
+    # cannot be both(.gov, .p) so default believe .gov
+    if [[ -f './.gov' ]]; then 
+      IS_GOV=true
+      BASE="https://admin.us-gov-east-1.aws.elastic-cloud.com"
+      authX="Authorization: APIKey ${ELASTIC_ECE_GOV_KEY}"
+    fi
+  else
+    # (.d, .p) not stored as ".id" because overlapping values for .esRefId with different interpretations
+    if [[ -f './.p' ]]; then ID=$(cat "./.p") && IS_ECH=false; fi
+  fi
+  
+  if [[ -f './.esRefId' ]]; then 
+    if [[ ( -f './.d' || -f './.p' ) ]]; then
+      REF_ID=$(cat "./.esRefId")
+    else
+      rm './.esRefId'
+      echo $PREREQ
+      return
+    fi
+  fi
+  if [[ ! $ID ]]; then echo $PREREQ && return; fi
+
+  # determine .esRefId if not previously cached, per (.d, .p)
+  if [[ ! -f './.esRefId' ]]; then
+    REF_ID=
+    if [[ "$IS_ECH" == true ]]; then
+      # only works for .d not .p
+      tmp_domain="$BASE/api/v1/all/_search?q=$ID"
+      tmp_response=$(eval curl --compressed -s -XGET -H \"$authX\" -H \"$MGMNT\" -H \"$FLEET_OVERRIDE\" \"$tmp_domain\")
+      # optA=$( echo $tmp_response | jq -r ".results?|.[]|.info.resources.elasticsearch[].ref_id" | head -1 | sed 's/\"//g' )
+      REF_ID=$( echo $tmp_response | jq -rc ".results?|.[]|.info.resources.elasticsearch[].ref_id"  )
+      # known values (main-elasticsearch, elasticsearch, es-ref-id) but dynamic
+    else
+      # known values (elasticsearch, observability, security) and static
+      tmp_domain="$BASE/api/v1/admin/serverless/projects"
+      tmp_response=$(for PROJECT_TYPE in elasticsearch observability security; do (eval curl --compressed -s -f -XGET "$tmp_domain/${PROJECT_TYPE}/$ID" -H \"$authX\" || true); done)
+      REF_ID=$( echo $tmp_response |  jq -rc '.type' )
+    fi
+    echo $REF_ID > "./.esRefId"
+  fi
+
+  if [[ $IS_ECH == true ]]; then
+    DOMAIN="$BASE/api/v1/deployments/$ID/elasticsearch/$REF_ID/proxy"
+  else
+    DOMAIN="$BASE/api/v1/admin/serverless/projects/$REF_ID/$ID/_proxy"
+  fi
+
+  # .d api console API not allow no/extra '/' but .p not care
+  if [[ -z "$1" ]]; then URI="/"; else URI=$1; fi
+  if [[ ${URI:0:1} != "/" ]]; then URI="/$URI"; fi
+
+  if [[ "$2" == "curl" ]]; then 
+    echo "curl -s --compressed -XGET -H \"$authX\" -H \"$MGMNT\" -H \"$FLEET_OVERRIDE\" \"$DOMAIN$URI\""
+  else
+    echo $(eval "curl -s --compressed -XGET -H \"$authX\" -H \"$MGMNT\" -H \"$FLEET_OVERRIDE\" \"$DOMAIN$URI\"")  
+  fi
+}
+
+
+alias mandiag="cat ~/code/dotfiles/bash/functions_elastic_diag | grep "
+
+function diag {
+
+    r=$(ess '/')
+    if [[ $r == *"👻"* ]]; then echo $r && return; fi
+    echo $r | jq . > version.json
+    v=$(version $(cat version.json | jq -cr '.version.number') )
+    if [[ $v == 0 ]]; then echo "👻 could not determine version" && return; fi # when ess not initialized
+    echo "👀 v$(cat version.json | jq -r '.version.number') $(cat version.json | jq '.cluster_name')"
+    if [[ $v < 070700 ]]; then echo "👻 YMMV v≤7.7"; fi
+
+    run_all=false
+    just_use=true
+    read -p "🙋‍♀️ only USE? [y,n] " shortA
+    case $shortA in
+        n|N) run_all=true
+    esac
+    if [ "$run_all" = false ]; then 
+        read -p "🙋‍♀️ only USE core? [y,n] " shortB 
+        case $shortB in
+            n|N) just_use=false
+        esac
+    fi
+    
+    # https://github.com/elastic/support-diagnostics/blob/main/src/main/resources/elastic-rest.yml
+    echo " "
+    echo "🦖"
+    if [[ ! -d "cat" ]]; then mkdir "cat"; fi
+    if [[ ! -d "commercial" ]]; then mkdir "commercial"; fi
+
+    # https://medium.com/@stefnestor/use-method-for-elasticsearch-d976802d8ba6 
+    echo "= performance: USE method"
+    echo "    - master_node.json" && ess '_nodes/_master/_none' | jq . > master_node.json
+    echo "    - cat_nodes.txt" && ess '_cat/nodes?v&s=master,name&h=name,id,master,node.role,cpu,heap.percent,disk.*,sstc,uptime,version' > ./cat/cat_nodes.txt
+    echo "    - cat_allocation.txt" && ess '_cat/allocation?v' > ./cat/cat_allocation.txt
+    echo "    - cluster_pending_tasks.json" && ess '_cluster/pending_tasks?human' | jq . > cluster_pending_tasks.json
+    echo "    - cat_thread_pool.txt" && ess '_cat/thread_pool?v' > ./cat/cat_thread_pool.txt
+    echo "    - cluster_health.json" && ess '_cluster/health' | jq . > cluster_health.json
+    echo "    - allocation_explain.json" && ess '_cluster/allocation/explain?include_disk_info=true' | jq . > allocation_explain.json
+    echo "    - tasks.json" && ess '_tasks?human&detailed=true' | jq . > tasks.json
+    ## not USE, but stef frequently wants
+    echo "    - index_settings.json" && ess '_settings?human&expand_wildcards=all' | jq . > settings.json
+    echo "    - index_stats.json" && ess '_stats?level=shards&human&expand_wildcards=all&ignore_unavailable=true' | jq . > indices_stats.json
+    echo "    - alias.json" && ess '_alias?human' | jq . > alias.json
+    echo "    - cluster_settings_defaults.json" && ess '_cluster/settings?include_defaults&flat_settings' | jq . > cluster_settings_defaults.json
+    ## not USE, for restore script
+    # - https://github.com/elastic/support/tree/master/restore-api-builder 
+    echo "    - slm_policies.json" && ess '_slm/policy?human' | jq . > ./commercial/slm_policies.json 
+    echo "    - data_streams.json" && ess '_data_stream' | jq . > ./commercial/data_stream.json
+    echo "    - cat_repositories.txt" && ess '_cat/repositories?v' > ./cat/cat_repositories.txt
+    echo "    - snapshot.json" && ess '_snapshot/*/*?verbose=false' | jq . > snapshot.json
+    ## 
+    # echo "    - cat_tasks.txt" && ess '_cat/tasks?v&s=time:desc&h=ty,ac,time,n,ti,pti' > ./cat/cat_tasks.txt
+    echo "    - cat_recovery_active.txt" && ess '_cat/recovery?v&expand_wildcards=all&active_only=true&h=time,tb,bp,top,ty,st,snode,tnode,idx,sh&s=time:desc' > ./cat/cat_recovery_active.txt
+    echo "    - ilm_explain.json" && ess '_all/_ilm/explain?human&expand_wildcards=all' | jq . > ./commercial/ilm_explain.json
+    echo "    - ilm_policies.json" && ess '_ilm/policy?human' | jq . > ./commercial/ilm_policies.json
+    echo "    - nodes_stats.json" && ess '_nodes/stats?human' | jq . > nodes_stats.json
+    echo "    - nodes_hot_threads.txt" && ess '_nodes/hot_threads?threads=10000' > nodes_hot_threads.txt
+    if [[ $v > 080200 ]]; then 
+        echo "    - internal_health.json" && ess '_internal/_health' | jq . > internal_health.json
+        if [[ $v > 080700 ]]; then 
+            echo "    - internal_health.json" && ess '_health_report' | jq . > internal_health.json
+        fi
+    fi
+    echo "    3 nodes.json" && ess '_nodes?human' | jq . > nodes.json
+    echo "    2 cat_indices.txt" && ess '_cat/indices?v&s=index&h=health,status,index,uuid,pri,rep,docs.count,docs.deleted,store.size,pri.store.size,sth&expand_wildcards=all' > ./cat/cat_indices.txt
+    echo "    1 cat_shards.txt" && ess '_cat/shards?v&s=index' > ./cat/cat_shards.txt
+    echo "    0 cluster_state.json" && ess '_cluster/state?human&wait_for_timeout=2m' | jq . > cluster_state.json
+
+    if [[ "$just_use" = false || "$run_all" = true ]]; then
+        echo "= performance: other"
+
+        echo "| - nodes"
+        echo "    - plugins.json" && ess '_cat/plugins?format=json' | jq . > ./cat/plugins.json
+        echo "    - nodes_usage.json" && ess '_nodes/usage' | jq . > nodes_usage.json
+        echo "    - cat_nodeattrs.txt" && ess '_cat/nodeattrs?v&h=node,id,pid,host,ip,port,attr,value' > ./cat/cat_nodeattrs.txt
+        echo "    - internal_desired_balance.json" && ess '_internal/desired_balance' | jq . > internal_desired_balance.json
+        
+        echo "| - cluster"
+        echo "    - cat_pending_tasks.txt" && ess '_cat/pending_tasks?v' > ./cat/cat_pending_tasks.txt
+        echo "    - cluster_stats.json" && ess '_cluster/stats?human' | jq . > cluster_stats.json
+        echo "    - slm_status.json" && ess '_slm/status' | jq . > ./commercial/slm_status.json
+        echo "    - ilm_status.json" && ess '_ilm/status' | jq . > ./commercial/ilm_status.json
+        echo "    - licenses.json" && ess '_license' | jq . > licenses.json
+        echo "    - remote_cluster_info.json" && ess '_remote/info' | jq . > remote_cluster_info.json
+        echo "    - nodes_shutdown_status.json" && ess '_nodes/shutdown' | jq . > ./commercial/nodes_shutdown_status.json
+        echo "    - repositories.json" && ess '_snapshot' | jq . > repositories.json
+        
+        echo "| - tasks,ilm,slm"
+        echo "    - cat_recovery.txt" && ess '_cat/recovery?v&expand_wildcards=all' > ./cat/cat_recovery.txt
+        ## actually only active
+        echo "    - recovery.json" && ess '_recovery?human&detailed=true&active_only=true' | jq . > recovery.json
+        # echo "    - recovery_active.json" && ess '_recovery?human&detailed=true&active_only=true' | jq . > recovery_active.json
+        ##
+        echo "    - searchable_snapshots_cache_stats.json" && ess '_searchable_snapshots/cache/stats?human' | jq . > ./commercial/searchable_snapshots_cache_stats.json
+        echo "    - slm_stats.json" && ess '_slm/stats' | jq . > ./commercial/slm_stats.json
+        echo "    - cat_snapshots.txt" && ess '_cat/snapshots?v' > ./cat/cat_snapshots.txt
+        echo "    - snapshots_current.json" && ess '_snapshot/_all/_current' | jq . > snapshots_current.json
+        echo "    - snapshot_latest.json" && ess '_snapshot/_all/_all?size=300&sort=start_time&order=desc' | jq . > snapshot_latest.json
+        
+        echo "| - indices,ingest"
+        echo "    - index_mappings.json" && ess '_mapping?expand_wildcards=all' | jq . > mapping.json
+        echo "    - segments.json" && ess '_segments?human' | jq . > segments.json
+        echo "    - cat_aliases.txt" && ess '_cat/aliases?v' > ./cat/cat_aliases.txt
+        echo "    - cat_fielddata.txt" && ess '_cat/fielddata?v' > ./cat/cat_fielddata.txt
+        echo "    - fielddata_stats.json" && ess '_nodes/stats/indices/fielddata?level=shards&fields=*' | jq . > fielddata_stats.json
+        echo "    - cat_segments.txt" && ess '_cat/segments?v&s=index' > ./cat/cat_segments.txt
+        echo "    - pipelines.json" && ess '_ingest/pipeline/*?human' | jq . > pipelines.json
+
+        echo "| - templates,security"
+        # echo "    - dangling_indices.json" && ess '_dangling?human' | jq . > dangling_indices.json
+        echo "    - legacy_templates.json" && ess '_template' | jq . > templates.json && cp templates.json legacy_templates.json
+        echo "    - component_templates.json" && ess '_component_template' | jq . > component_templates.json
+        echo "    - cat_templates.txt" && ess '_cat/templates?v' > ./cat/cat_templates.txt
+        echo "    - index_templates.json" && ess '_index_template' | jq . > index_templates.json
+        echo "    - logstash_pipeline.json" && ess '_logstash/pipeline' | jq . > ./commercial/logstash_pipeline.json
+        
+    fi
+    if [ "$run_all" = true ]; then
+        echo "= misc"
+        
+        echo "| - security"
+        echo "    - security_roles.json" && ess '_security/role' | jq . > ./commercial/security_roles.json
+        echo "    - security_role_mappings.json" && ess '_security/role_mapping' | jq . > ./commercial/security_role_mappings.json
+        echo "    - security_users.json" && ess '_security/user' | jq . > ./commercial/security_users.json
+
+        echo "| - ml"
+        echo "    - ml_anomalies.json" && ess '_ml/anomaly_detectors' | jq . > ./commercial/ml_anomaly_detectors.json && cp ./commercial/ml_anomaly_detectors.json ./commercial/ml_anomalies.json
+        echo "    - ml_anomalies_stats.json" && ess '_ml/anomaly_detectors/_stats' | jq . > ./commercial/ml_stats.json && cp ./commercial/ml_stats.json ./commercial/ml_anomalies_stats.json
+        echo "    - ml_dataframe.json" && ess '_ml/data_frame/analytics' | jq . > ./commercial/ml_dataframe.json
+        echo "    - ml_dataframe_stats.json" && ess '_ml/data_frame/analytics/_stats' | jq . > ./commercial/ml_dataframe_stats.json
+        echo "    - ml_datafeeds.json" && ess '_ml/datafeeds' | jq . > ./commercial/ml_datafeeds.json
+        echo "    - ml_datafeeds_stats.json" && ess '_ml/datafeeds/_stats' | jq . > ./commercial/ml_datafeeds_stats.json
+        echo "    - ml_info.json" && ess '_ml/info' | jq . > ./commercial/ml_info.json
+        echo "    - ml_trained_models.json" && ess '_ml/trained_models' | jq . > ./commercial/ml_trained_models.json
+        echo "    - ml_trained_models_stats.json" && ess '_ml/trained_models/_stats' | jq . > ./commercial/ml_trained_models_stats.json
+
+        echo "| - rollup,transform,watcher"
+        echo "    - rollup_index_caps.json" && ess '_all/_rollup/data' | jq . > ./commercial/rollup_index_caps.json
+        echo "    - rollup_caps.json" && ess '_rollup/data/_all' | jq . > ./commercial/rollup_caps.json
+        echo "    - rollup_jobs.json" && ess '_rollup/job/_all' | jq . > ./commercial/rollup_jobs.json
+        echo "    - transform.json" && ess '_transform' | jq . > ./commercial/transform.json
+        echo "    - transform_stats.json" && ess '_transform/_stats' | jq . > ./commercial/transform_stats.json
+        echo "    - transform_basic_stats.json" && ess '_transform/_stats?basic=true' | jq . > ./commercial/transform_basic_stats.json
+        echo "    - transform_node_stats.json" && ess '_transform/_node_stats' | jq . > ./commercial/transform_node_stats.json
+        echo "    - watcher_stats.json" && ess '_watcher/stats/_all' | jq . > ./commercial/watcher_stats.json
+        echo "    - watcher_stack.json" && ess '_watcher/stats?emit_stacktraces=true' | jq . > ./commercial/watcher_stack.json
+
+        echo "| - ccr,autoscaling,enrich,geoip"
+        echo "    - ccr_autofollow_patterns.json" && ess '_ccr/auto_follow' | jq . > ./commercial/ccr_autofollow_patterns.json
+        echo "    - ccr_stats.json" && ess '_ccr/stats' | jq . > ./commercial/ccr_stats.json
+        echo "    - ccr_follower_info.json" && ess '_all/_ccr/info' | jq . > ./commercial/ccr_follower_info.json
+        echo "    - autoscaling_capacity.json" && ess '_autoscaling/capacity' | jq . > ./commercial/autoscaling_capacity.json
+        echo "    - enrich_policies.json" && ess '_enrich/policy' | jq . > ./commercial/enrich_policies.json
+        echo "    - enrich_stats.json" && ess '_enrich/_stats' | jq . > ./commercial/enrich_stats.json
+        echo "    - geoip_stats.json" && ess '_ingest/geoip/stats' | jq . > ./commercial/geoip_stats.json
+        echo "    - xpack.json" && ess '_xpack/usage?human' | jq . > ./commercial/xpack.json
+        echo "    - profiling_status.json" && ess '_profiling/status' | jq . > ./commercial/profiling_status.json
+
+        echo "| - strays,misc"
+
+    
+    fi
+    echo "👌"
+}
+
+function diagme {
+    if [[ -f ".d" || -f ".p" ]]; then 
+        directory=${PWD##*/}
+        directory=${directory:-/}
+        id=
+        if [[ -f ".p" ]]; then id=$(cat .p); fi
+        if [[ -f ".d" ]]; then id=$(cat .d); fi
+        ## keeping synced to lib/elastic 'file_name ='
+        time=$(date -u "+%Y%m%dT%H%M") # "+%Y%b%dT%H%M"
+        mkcd "${time}-${directory}-${id:0:6}-es"
+        # mkcd "${time}-${dep:0:6}-es"
+        ##
+        if [[ -a "../.p" ]]; then cp ../.p .p; fi
+        if [[ -a "../.d" ]]; then cp ../.d .d; fi
+        if [[ -a "../.gov" ]]; then cp ../.gov .gov ; fi
+        diag
+    else
+        echo "👻 cache .d or .p first"
+    fi
+}
+
+function diagme5 {
+    diagme 
+    echo "waiting 5mins"
+    sleep 60
+    echo " ... 4"
+    sleep 60
+    echo " ... 3"
+    sleep 60
+    echo " ... 2"
+    sleep 60
+    echo " ... 1"
+    sleep 60
+
+    ## not USE, but stef frequently wants for hot spotting
+    # - https://support.elastic.dev/knowledge/view/3477babb 
+    echo "    +1 index_stats_end.json" && ess '_stats?level=shards&human&expand_wildcards=all&ignore_unavailable=true' | jq . > indices_stats_end.json
+    echo "    +0 nodes_stats_end.json" && ess '_nodes/stats?human' | jq . > nodes_stats_end.json
+    echo "➕"
+    python3 $HOME_LIB_ELASTIC/checkForHotSpotting.py
+}
+
+function diagplus {
+    # TODO: conditionals for type of plus, e.g. replace certain files
+    # OMG NO, remember our UI idea it was goign to handle this 😭
+    
+    ## not USE, but stef frequently wants for hot spotting
+    # - https://support.elastic.dev/knowledge/view/3477babb 
+    echo " +1 index_stats_end.json" && ess '_stats?level=shards&human&expand_wildcards=all&ignore_unavailable=true' | jq . > indices_stats_end.json
+    echo " +0 nodes_stats_end.json" && ess '_nodes/stats?human' | jq . > nodes_stats_end.json
+    echo " 💪 running hotspotting"
+    python3 $HOME_LIB_ELASTIC/checkForHotSpotting.py
+
+}
+export GEMINI_API_KEY="████████████████████"
+export CASEHOME="/Users/username/tickets2"
+
+# Load Elastic Cloud deployment functions
+source ~/.copilot/functions/list-deployments.sh
+alias res="/Users/username/elastic/iroiro/restore_baby/run.sh"
+
+# Elastic Cloud API Keys
+export EC_API_KEY=████████████████████
+source ~/.copilot/functions/list-deployments.sh

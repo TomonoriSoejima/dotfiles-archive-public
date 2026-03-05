@@ -1,0 +1,25 @@
+
+
+gjava() {
+if [ ! -z "$1" ]; 
+then
+	grep -ri $1 $PWD --include="*.java"
+else
+	echo "usage gjava <input>"
+fi
+}
+
+
+gcpp() {
+if [ ! -z "$1" ]; 
+then
+	grep -ri $1 $PWD --include="*.cpp"
+else
+	echo "usage gcpp <input>"
+fi
+}
+
+
+function big {
+        osascript -e "tell application \"Quicksilver\" to show large type \"$1\""
+}

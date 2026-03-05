@@ -1,0 +1,38 @@
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# The following lines have been added by Docker Desktop to enable Docker CLI completions.
+fpath=(/Users/surfer/.docker/completions $fpath)
+autoload -Uz compinit
+compinit
+# End of Docker CLI completions
+
+# Added by Windsurf
+export PATH="/Users/surfer/.codeium/windsurf/bin:$PATH"
+
+. "$HOME/.local/bin/env"
+
+# SFDC Feed Downloader alias
+
+# Support Ticket Menu Alias
+alias menu='ticket-menu'
+
+
+# Updated ny() function with copilot symlink setup
+ny() {
+    (cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 feed_downloader_simple.py "$@")
+    
+    # Auto-setup copilot-instructions.md symlink in ticket folder
+    if [[ -n "$1" ]]; then
+        local ticket_dir=$(ls -d ~/tickets/"$1"* 2>/dev/null | head -1)
+        if [[ -n "$ticket_dir" && -d "$ticket_dir" ]]; then
+            mkdir -p "$ticket_dir/.github"
+            ln -sf ~/support-templates/copilot-instructions.md "$ticket_dir/.github/copilot-instructions.md"
+            echo "✓ Copilot instructions symlinked"
+        fi
+    fi
+}
+
+# Load Elastic Cloud deployment functions
+source ~/.copilot/functions/list-deployments.sh
+
+# Elastic Cloud API Keys
+export EC_API_KEY="essa_Tm5FM0xVdHdjMEowUmxKQ01GZHBOMFpQUkcwNk0wTjJYMnBaZGpNdGVuUkpXRTVmZVU5NlQwWnlRUT09AAAAAHCQ23o="

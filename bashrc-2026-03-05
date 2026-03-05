@@ -1,0 +1,116 @@
+
+#
+# npm command completion script
+#
+# Installation: npm completion >> ~/.bashrc  (or ~/.zshrc)
+# Or, maybe: npm completion > /usr/local/etc/bash_completion.d/npm
+#
+
+
+
+COMP_WORDBREAKS=${COMP_WORDBREAKS/=/}
+COMP_WORDBREAKS=${COMP_WORDBREAKS/@/}
+export COMP_WORDBREAKS
+
+if complete &>/dev/null; then
+  _npm_completion () {
+    local si="$IFS"
+    IFS=$'\n' COMPREPLY=($(COMP_CWORD="$COMP_CWORD" \
+                           COMP_LINE="$COMP_LINE" \
+                           COMP_POINT="$COMP_POINT" \
+                           npm completion -- "${COMP_WORDS[@]}" \
+                           2>/dev/null)) || return $?
+    IFS="$si"
+  }
+  complete -F _npm_completion npm
+elif compctl &>/dev/null; then
+  _npm_completion () {
+    local cword line point words si
+    read -Ac words
+    read -cn cword
+    let cword-=1
+    read -l line
+    read -ln point
+    si="$IFS"
+    IFS=$'\n' reply=($(COMP_CWORD="$cword" \
+                       COMP_LINE="$line" \
+                       COMP_POINT="$point" \
+                       npm completion -- "${words[@]}" \
+                       2>/dev/null)) || return $?
+    IFS="$si"
+  }
+  compctl -K _npm_completion npm
+fi
+###-end-npm-completion-###
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="/Users/surfer/.sdkman"
+[[ -s "/Users/surfer/.sdkman/bin/sdkman-init.sh" ]] && source "/Users/surfer/.sdkman/bin/sdkman-init.sh"
+
+
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/surfer/elastic/labs/google-cloud-sdk/path.bash.inc' ]; then . '/Users/surfer/elastic/labs/google-cloud-sdk/path.bash.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/surfer/elastic/labs/google-cloud-sdk/completion.bash.inc' ]; then . '/Users/surfer/elastic/labs/google-cloud-sdk/completion.bash.inc'; fi
+
+
+
+
+
+# eval "$(starship init bash)"
+
+
+
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
+
+
+
+# powerline-daemon -q
+# . /usr/local/lib/python3.9/site-packages/powerline/bindings/bash/powerline.sh
+
+
+test -f "/Library/Scripts/elastic-env.sh" && source "/Library/Scripts/elastic-env.sh"
+
+. "$HOME/.local/bin/env"
+
+# # SFDC Feed Downloader function with auto-copy of copilot instructions
+# ny() {
+#     (cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 feed_downloader_simple.py "$@")
+    
+#     # Auto-copy copilot instructions to the ticket folder
+#     if [[ -n "$1" && -d ~/tickets/"$1" ]]; then
+#         local template_file=~/tickets/.template/.github/copilot-instructions.md
+#         local ticket_dir=~/tickets/"$1"
+        
+#         mkdir -p "$ticket_dir/.github"
+#         if [[ -f "$template_file" ]]; then
+#             cp "$template_file" "$ticket_dir/.github/"
+#             echo "✓ Copied copilot instructions to $1"
+#         fi
+#     fi
+# }
+
+
+# Updated ny() to use local Python and setup copilot symlink
+ny() {
+    (cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 feed_downloader_simple.py "$@")
+    
+    # Auto-setup copilot-instructions.md symlink in ticket folder
+    if [[ -n "$1" && -d ~/tickets/"$1" ]]; then
+        local ticket_dir=~/tickets/"$1"
+        mkdir -p "$ticket_dir/.github"
+        cd "$ticket_dir/.github"
+        ln -s ~/tickets/.github/copilot-instructions.md copilot-instructions.md 2>/dev/null
+    fi
+}
+
+# Support Ticket Menu Alias
+alias menu='ticket-menu'
+export PATH="$HOME/bin:$PATH"
+
+alias handover='cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 check_handover.py'
+alias cases='cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 list_cases.py'
+alias monitor='cd /Users/surfer/elastic/iroiro/sfdc-tomo && python3 monitor_cases.py'

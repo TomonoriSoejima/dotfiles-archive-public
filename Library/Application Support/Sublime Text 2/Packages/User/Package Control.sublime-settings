@@ -1,0 +1,14 @@
+{
+	"auto_upgrade_last_run": null,
+	"installed_packages":
+	[
+		"Alignment",
+		"Git",
+		"Package Control",
+		"SideBarGit",
+		"SourceTree.app Menu",
+		"SublimeCodeIntel",
+		"Theme - Aqua",
+		"Theme - Soda Refined"
+	]
+}
